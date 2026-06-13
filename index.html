@@ -8,20 +8,12 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background-color: #000000;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background-color: #000000; }
     </style>
 </head>
 <body>
     <div id="root"></div>
-    
     <script type="text/babel">
         function ProspectRanker() {
           const SHEET_ID = '1GYw-olY5z4xu3JvoMtxPTkzKQuSrxb3chg9eUfeoQao';
@@ -37,23 +29,14 @@
           const [loading, setLoading] = React.useState(true);
 
           React.useEffect(() => {
-            fetch(PROSPECTS_CSV)
-              .then(r => r.text())
-              .then(csv => {
-                const lines = csv.trim().split('\n');
-                const prospectsData = lines
-                  .slice(1)
-                  .map(line => line.trim())
-                  .filter(line => line.length > 0);
-                setProspects(prospectsData);
-              })
-              .catch(err => console.error('Failed to load prospects:', err))
-              .finally(() => setLoading(false));
+            fetch(PROSPECTS_CSV).then(r => r.text()).then(csv => {
+              const lines = csv.trim().split('\n');
+              const prospectsData = lines.slice(1).map(line => line.trim()).filter(line => line.length > 0);
+              setProspects(prospectsData);
+            }).catch(err => console.error('Failed:', err)).finally(() => setLoading(false));
             
-            const savedVotes = localStorage.getItem('prospectVotes');
-            if (savedVotes) {
-              setVotes(JSON.parse(savedVotes));
-            }
+            const saved = localStorage.getItem('prospectVotes');
+            if (saved) setVotes(JSON.parse(saved));
           }, []);
 
           React.useEffect(() => {
@@ -63,49 +46,42 @@
           const addProspect = (e) => {
             e.preventDefault();
             if (newProspect.trim() && !prospects.includes(newProspect.trim())) {
-              const updated = [...prospects, newProspect.trim()].sort();
-              setProspects(updated);
+              setProspects([...prospects, newProspect.trim()].sort());
               setNewProspect('');
             }
           };
 
-          const removeProspect = (name) => {
-            setProspects(prospects.filter(p => p !== name));
-          };
-
+          const removeProspect = (name) => setProspects(prospects.filter(p => p !== name));
           const moveRankUp = (index) => {
             if (index === 0) return;
             const newRanking = [...ranking];
             [newRanking[index], newRanking[index - 1]] = [newRanking[index - 1], newRanking[index]];
             setRanking(newRanking);
           };
-
           const moveRankDown = (index) => {
             if (index === ranking.length - 1) return;
             const newRanking = [...ranking];
             [newRanking[index], newRanking[index + 1]] = [newRanking[index + 1], newRanking[index]];
             setRanking(newRanking);
           };
+
+          const handleDragStart = (e, prospect) => {
             setDraggedItem(prospect);
             e.dataTransfer.effectAllowed = 'move';
           };
-
           const handleDragOver = (e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
           };
-
           const handleDropOnContainer = (e) => {
             e.preventDefault();
             if (!draggedItem || ranking.includes(draggedItem)) return;
             setRanking([...ranking, draggedItem]);
             setDraggedItem(null);
           };
-
           const handleDropOnRankCard = (e, targetProspect) => {
             e.preventDefault();
             if (!draggedItem) return;
-
             if (ranking.includes(draggedItem) && ranking.includes(targetProspect)) {
               if (draggedItem === targetProspect) return;
               const draggedIndex = ranking.indexOf(draggedItem);
@@ -121,11 +97,7 @@
           };
 
           const submitVote = () => {
-            const points = ranking.map((prospect, index) => ({
-              prospect,
-              points: ranking.length - index
-            }));
-            
+            const points = ranking.map((prospect, index) => ({ prospect, points: ranking.length - index }));
             setVotes([...votes, { ranking: points, timestamp: new Date().toISOString() }]);
             setRanking([]);
             setSubmitted(true);
@@ -134,40 +106,27 @@
 
           const calculateAverages = () => {
             if (votes.length === 0) return [];
-            
-            const totals = {};
-            const counts = {};
-            
+            const totals = {}, counts = {};
             votes.forEach(vote => {
               vote.ranking.forEach(item => {
                 totals[item.prospect] = (totals[item.prospect] || 0) + item.points;
                 counts[item.prospect] = (counts[item.prospect] || 0) + 1;
               });
             });
-            
-            const averages = Object.keys(totals).map(prospect => ({
-              prospect,
-              avgPoints: totals[prospect] / counts[prospect],
-              voteCount: counts[prospect]
+            return Object.keys(totals).map(prospect => ({
+              prospect, avgPoints: totals[prospect] / counts[prospect], voteCount: counts[prospect]
             })).sort((a, b) => b.avgPoints - a.avgPoints);
-            
-            return averages;
           };
 
           const unrankedProspects = prospects.filter(p => !ranking.includes(p));
           const averageRankings = calculateAverages();
 
-          if (loading) {
-            return <div style={styles.container}><p style={{textAlign: 'center', color: '#fff', marginTop: '40px'}}>Loading...</p></div>;
-          }
+          if (loading) return <div style={{...styles.container, textAlign: 'center', paddingTop: '40px', color: '#fff'}}>Loading...</div>;
 
           return (
             <div style={styles.container}>
               <div style={styles.header}>
-                <div>
-                  <h1 style={styles.title}>Prospect Rankings</h1>
-                  <p style={styles.subtitle}>{isAdmin ? 'Admin' : 'Vote'}</p>
-                </div>
+                <div><h1 style={styles.title}>Prospect Rankings</h1><p style={styles.subtitle}>{isAdmin ? 'Admin' : 'Vote'}</p></div>
                 <div style={styles.badge}>{votes.length} votes</div>
               </div>
 
@@ -176,25 +135,14 @@
                   <div style={styles.section}>
                     <h2 style={styles.sectionTitle}>Manage Prospects</h2>
                     <form onSubmit={addProspect} style={styles.addForm}>
-                      <input
-                        type="text"
-                        value={newProspect}
-                        onChange={(e) => setNewProspect(e.target.value)}
-                        placeholder="Add new prospect..."
-                        style={styles.input}
-                      />
+                      <input type="text" value={newProspect} onChange={(e) => setNewProspect(e.target.value)} placeholder="Add new prospect..." style={styles.input} />
                       <button type="submit" style={styles.addBtn}>Add</button>
                     </form>
                     <div style={styles.prospectList}>
                       {prospects.map(p => (
                         <div key={p} style={styles.prospectItem}>
                           <span>{p}</span>
-                          <button 
-                            onClick={() => removeProspect(p)}
-                            style={styles.removeBtn}
-                          >
-                            ×
-                          </button>
+                          <button onClick={() => removeProspect(p)} style={styles.removeBtn}>×</button>
                         </div>
                       ))}
                     </div>
@@ -211,9 +159,7 @@
                             <tr key={i} style={styles.tableRow}>
                               <td style={styles.tableCell}>{i + 1}</td>
                               <td style={styles.tableCell}>{r.prospect}</td>
-                              <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>
-                                {r.avgPoints.toFixed(1)} pts
-                              </td>
+                              <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>{r.avgPoints.toFixed(1)} pts</td>
                             </tr>
                           ))}
                         </tbody>
@@ -225,59 +171,27 @@
                 <div style={styles.votingContent}>
                   <div style={styles.votingSection}>
                     <h2 style={styles.sectionTitle}>Your Vote</h2>
-                    <div 
-                      style={styles.rankingList}
-                      onDragOver={handleDragOver}
-                      onDrop={handleDropOnContainer}
-                    >
+                    <div style={styles.rankingList} onDragOver={handleDragOver} onDrop={handleDropOnContainer}>
                       {ranking.length === 0 ? (
                         <p style={styles.empty}>Drag prospects here to rank them</p>
                       ) : (
                         ranking.map((prospect, index) => (
-                          <div
-                            key={prospect}
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, prospect)}
-                            onDragOver={handleDragOver}
-                            onDrop={(e) => handleDropOnRankCard(e, prospect)}
-                            style={{
-                              ...styles.rankCard,
-                              opacity: draggedItem === prospect ? 0.5 : 1
-                            }}
-                          >
+                          <div key={prospect} draggable onDragStart={(e) => handleDragStart(e, prospect)} onDragOver={handleDragOver} onDrop={(e) => handleDropOnRankCard(e, prospect)} style={{...styles.rankCard, opacity: draggedItem === prospect ? 0.5 : 1}}>
                             <div style={styles.rankNumber}>{index + 1}</div>
                             <div style={styles.rankContent}>
                               <span style={styles.prospectName}>{prospect}</span>
                               <span style={styles.points}>{ranking.length - index} pts</span>
                             </div>
                             <div style={styles.rankButtons}>
-                              <button
-                                onClick={() => moveRankUp(index)}
-                                disabled={index === 0}
-                                style={{...styles.rankButton, ...(index === 0 ? styles.rankButtonDisabled : {})}}
-                              >
-                                ↑
-                              </button>
-                              <button
-                                onClick={() => moveRankDown(index)}
-                                disabled={index === ranking.length - 1}
-                                style={{...styles.rankButton, ...(index === ranking.length - 1 ? styles.rankButtonDisabled : {})}}
-                              >
-                                ↓
-                              </button>
+                              <button onClick={() => moveRankUp(index)} disabled={index === 0} style={{...styles.rankButton, ...(index === 0 ? styles.rankButtonDisabled : {})}}>↑</button>
+                              <button onClick={() => moveRankDown(index)} disabled={index === ranking.length - 1} style={{...styles.rankButton, ...(index === ranking.length - 1 ? styles.rankButtonDisabled : {})}}>↓</button>
                             </div>
                           </div>
                         ))
                       )}
                     </div>
                     <div style={styles.actions}>
-                      <button
-                        onClick={submitVote}
-                        disabled={ranking.length === 0}
-                        style={{...styles.submitBtn, ...(ranking.length === 0 ? styles.submitBtnDisabled : {})}}
-                      >
-                        Submit Vote
-                      </button>
+                      <button onClick={submitVote} disabled={ranking.length === 0} style={{...styles.submitBtn, ...(ranking.length === 0 ? styles.submitBtnDisabled : {})}}>Submit Vote</button>
                       {submitted && <p style={styles.successMsg}>✓ Vote submitted</p>}
                     </div>
                   </div>
@@ -289,19 +203,7 @@
                         <p style={styles.empty}>All prospects ranked</p>
                       ) : (
                         unrankedProspects.map(prospect => (
-                          <div
-                            key={prospect}
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, prospect)}
-                            onDragOver={handleDragOver}
-                            onDrop={(e) => handleDropOnRankCard(e, prospect)}
-                            style={{
-                              ...styles.unrankedCard,
-                              opacity: draggedItem === prospect ? 0.5 : 1
-                            }}
-                          >
-                            {prospect}
-                          </div>
+                          <div key={prospect} draggable onDragStart={(e) => handleDragStart(e, prospect)} onDragOver={handleDragOver} onDrop={(e) => handleDropOnRankCard(e, prospect)} style={{...styles.unrankedCard, opacity: draggedItem === prospect ? 0.5 : 1}}>{prospect}</div>
                         ))
                       )}
                     </div>
@@ -318,9 +220,7 @@
                             <tr key={i} style={styles.tableRow}>
                               <td style={styles.tableCell}>{i + 1}</td>
                               <td style={styles.tableCell}>{r.prospect}</td>
-                              <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>
-                                {r.avgPoints.toFixed(1)} pts
-                              </td>
+                              <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>{r.avgPoints.toFixed(1)} pts</td>
                             </tr>
                           ))}
                         </tbody>
@@ -334,233 +234,41 @@
         }
 
         const styles = {
-          container: {
-            maxWidth: '1200px',
-            margin: '0 auto',
-            padding: '20px',
-            backgroundColor: '#000000',
-            minHeight: '100vh'
-          },
-          header: {
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            marginBottom: '30px',
-            borderBottom: '2px solid #dc2626',
-            paddingBottom: '20px'
-          },
-          title: {
-            fontSize: '32px',
-            fontWeight: '700',
-            margin: '0 0 4px 0',
-            color: '#ffffff'
-          },
-          subtitle: {
-            fontSize: '14px',
-            color: '#9ca3af',
-            margin: 0
-          },
-          badge: {
-            padding: '6px 12px',
-            backgroundColor: '#dc2626',
-            color: '#fff',
-            borderRadius: '4px',
-            fontSize: '12px',
-            fontWeight: '600'
-          },
-          adminContent: {
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '20px'
-          },
-          votingContent: {
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '20px'
-          },
-          section: {
-            backgroundColor: '#111111',
-            borderRadius: '8px',
-            padding: '20px',
-            border: '1px solid #404040'
-          },
-          votingSection: {
-            backgroundColor: '#111111',
-            borderRadius: '8px',
-            padding: '20px',
-            border: '1px solid #404040'
-          },
-          sectionTitle: {
-            fontSize: '16px',
-            fontWeight: '600',
-            margin: '0 0 16px 0',
-            color: '#ffffff'
-          },
-          addForm: {
-            display: 'flex',
-            gap: '8px',
-            marginBottom: '16px'
-          },
-          input: {
-            flex: 1,
-            padding: '8px 12px',
-            border: '1px solid #404040',
-            borderRadius: '4px',
-            fontSize: '14px',
-            backgroundColor: '#1a1a1a',
-            color: '#ffffff'
-          },
-          addBtn: {
-            padding: '8px 16px',
-            backgroundColor: '#dc2626',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: '500'
-          },
-          prospectList: {
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '8px'
-          },
-          prospectItem: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            backgroundColor: '#262626',
-            padding: '6px 12px',
-            borderRadius: '4px',
-            fontSize: '14px',
-            color: '#ffffff'
-          },
-          removeBtn: {
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            fontSize: '18px',
-            color: '#9ca3af',
-            padding: 0
-          },
-          rankingList: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            minHeight: '300px'
-          },
-          rankCard: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            padding: '12px',
-            backgroundColor: '#1a1a1a',
-            border: '2px solid #404040',
-            borderRadius: '6px',
-            cursor: 'grab'
-          },
-          rankNumber: {
-            fontSize: '18px',
-            fontWeight: '700',
-            color: '#dc2626',
-            minWidth: '28px',
-            textAlign: 'center'
-          },
-          rankContent: {
-            flex: 1,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          },
-          rankButtons: {
-            display: 'flex',
-            gap: '4px'
-          },
-          rankButton: {
-            width: '28px',
-            height: '28px',
-            padding: '0',
-            backgroundColor: '#dc2626',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontWeight: '600'
-          },
-          rankButtonDisabled: {
-            backgroundColor: '#404040',
-            cursor: 'not-allowed',
-            color: '#9ca3af'
-          },
-          prospectName: {
-            fontWeight: '500',
-            color: '#ffffff'
-          },
-          points: {
-            fontSize: '12px',
-            color: '#9ca3af',
-            fontWeight: '500'
-          },
-          unrankedList: {
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-            gap: '8px'
-          },
-          unrankedCard: {
-            padding: '12px',
-            backgroundColor: '#1a1a1a',
-            border: '2px dashed #dc2626',
-            borderRadius: '6px',
-            cursor: 'grab',
-            fontSize: '14px',
-            fontWeight: '500',
-            color: '#dc2626',
-            textAlign: 'center'
-          },
-          actions: {
-            display: 'flex',
-            gap: '12px',
-            alignItems: 'center',
-            marginTop: '16px'
-          },
-          submitBtn: {
-            padding: '12px 24px',
-            backgroundColor: '#dc2626',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontWeight: '600',
-            fontSize: '14px'
-          },
-          submitBtnDisabled: {
-            backgroundColor: '#404040',
-            cursor: 'not-allowed'
-          },
-          successMsg: {
-            color: '#22c55e',
-            fontSize: '14px',
-            margin: 0
-          },
-          empty: {
-            textAlign: 'center',
-            color: '#6b7280',
-            padding: '20px',
-            fontStyle: 'italic'
-          },
-          table: {
-            width: '100%',
-            borderCollapse: 'collapse',
-            fontSize: '14px'
-          },
-          tableRow: {
-            borderBottom: '1px solid #404040'
-          },
-          tableCell: {
-            padding: '10px 0',
-            textAlign: 'left',
-            color: '#d1d5db'
-          }
+          container: { maxWidth: '1200px', margin: '0 auto', padding: '20px', backgroundColor: '#000000', minHeight: '100vh' },
+          header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '30px', borderBottom: '2px solid #dc2626', paddingBottom: '20px' },
+          title: { fontSize: '32px', fontWeight: '700', margin: '0 0 4px 0', color: '#ffffff' },
+          subtitle: { fontSize: '14px', color: '#9ca3af', margin: 0 },
+          badge: { padding: '6px 12px', backgroundColor: '#dc2626', color: '#fff', borderRadius: '4px', fontSize: '12px', fontWeight: '600' },
+          adminContent: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' },
+          votingContent: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' },
+          section: { backgroundColor: '#111111', borderRadius: '8px', padding: '20px', border: '1px solid #404040' },
+          votingSection: { backgroundColor: '#111111', borderRadius: '8px', padding: '20px', border: '1px solid #404040' },
+          sectionTitle: { fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0', color: '#ffffff' },
+          addForm: { display: 'flex', gap: '8px', marginBottom: '16px' },
+          input: { flex: 1, padding: '8px 12px', border: '1px solid #404040', borderRadius: '4px', fontSize: '14px', backgroundColor: '#1a1a1a', color: '#ffffff' },
+          addBtn: { padding: '8px 16px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '500' },
+          prospectList: { display: 'flex', flexWrap: 'wrap', gap: '8px' },
+          prospectItem: { display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#262626', padding: '6px 12px', borderRadius: '4px', fontSize: '14px', color: '#ffffff' },
+          removeBtn: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#9ca3af', padding: 0 },
+          rankingList: { display: 'flex', flexDirection: 'column', gap: '8px', minHeight: '300px' },
+          rankCard: { display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', backgroundColor: '#1a1a1a', border: '2px solid #404040', borderRadius: '6px', cursor: 'grab' },
+          rankNumber: { fontSize: '18px', fontWeight: '700', color: '#dc2626', minWidth: '28px', textAlign: 'center' },
+          rankContent: { flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+          rankButtons: { display: 'flex', gap: '4px' },
+          rankButton: { width: '28px', height: '28px', padding: '0', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' },
+          rankButtonDisabled: { backgroundColor: '#404040', cursor: 'not-allowed', color: '#9ca3af' },
+          prospectName: { fontWeight: '500', color: '#ffffff' },
+          points: { fontSize: '12px', color: '#9ca3af', fontWeight: '500' },
+          unrankedList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '8px' },
+          unrankedCard: { padding: '12px', backgroundColor: '#1a1a1a', border: '2px dashed #dc2626', borderRadius: '6px', cursor: 'grab', fontSize: '14px', fontWeight: '500', color: '#dc2626', textAlign: 'center' },
+          actions: { display: 'flex', gap: '12px', alignItems: 'center', marginTop: '16px' },
+          submitBtn: { padding: '12px 24px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' },
+          submitBtnDisabled: { backgroundColor: '#404040', cursor: 'not-allowed' },
+          successMsg: { color: '#22c55e', fontSize: '14px', margin: 0 },
+          empty: { textAlign: 'center', color: '#6b7280', padding: '20px', fontStyle: 'italic' },
+          table: { width: '100%', borderCollapse: 'collapse', fontSize: '14px' },
+          tableRow: { borderBottom: '1px solid #404040' },
+          tableCell: { padding: '10px 0', textAlign: 'left', color: '#d1d5db' }
         };
 
         ReactDOM.render(<ProspectRanker />, document.getElementById('root'));
