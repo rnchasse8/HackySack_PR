@@ -187,12 +187,12 @@
               <div style={styles.votingContent}>
                 <div style={styles.votingSection}>
                   <h2 style={styles.sectionTitle}>Your Vote</h2>
-                  <div style={styles.rankingList} onDragOver={handleDragOver} onDrop={handleDropOnContainer}>
-                    {ranking.length === 0 ? (
-                      <p style={styles.empty}>Drag prospects here to rank them</p>
-                    ) : (
-                      ranking.map((prospect, index) => (
-                        <div key={prospect} draggable onDragStart={(e) => handleDragStart(e, prospect)} onDragOver={handleDragOver} onDrop={(e) => handleDropOnRankCard(e, prospect)} style={{...styles.rankCard, opacity: draggedItem === prospect ? 0.5 : 1}}>
+                  {ranking.length === 0 ? (
+                    <p style={styles.empty}>Select prospects below to rank them</p>
+                  ) : (
+                    <div style={styles.rankingList}>
+                      {ranking.map((prospect, index) => (
+                        <div key={prospect} style={{...styles.rankCard}}>
                           <div style={styles.rankNumber}>{index + 1}</div>
                           <div style={styles.rankContent}>
                             <span style={styles.prospectName}>{prospect}</span>
@@ -201,11 +201,12 @@
                           <div style={styles.rankButtons}>
                             <button onClick={() => moveRankUp(index)} disabled={index === 0} style={{...styles.rankButton, ...(index === 0 ? styles.rankButtonDisabled : {})}}>↑</button>
                             <button onClick={() => moveRankDown(index)} disabled={index === ranking.length - 1} style={{...styles.rankButton, ...(index === ranking.length - 1 ? styles.rankButtonDisabled : {})}}>↓</button>
+                            <button onClick={() => setRanking(ranking.filter(p => p !== prospect))} style={{...styles.rankButton, backgroundColor: '#6b7280'}}>✕</button>
                           </div>
                         </div>
-                      ))
-                    )}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                   <div style={styles.actions}>
                     <button onClick={submitVote} disabled={ranking.length === 0} style={{...styles.submitBtn, ...(ranking.length === 0 ? styles.submitBtnDisabled : {})}}>Submit Vote</button>
                     {submitted && <p style={styles.successMsg}>✓ Vote submitted</p>}
@@ -214,12 +215,14 @@
 
                 <div style={styles.votingSection}>
                   <h2 style={styles.sectionTitle}>Available</h2>
-                  <div style={styles.unrankedList}>
+                  <div style={styles.prospectButtonList}>
                     {unrankedProspects.length === 0 ? (
                       <p style={styles.empty}>All prospects ranked</p>
                     ) : (
                       unrankedProspects.map(prospect => (
-                        <div key={prospect} draggable onDragStart={(e) => handleDragStart(e, prospect)} onDragOver={handleDragOver} onDrop={(e) => handleDropOnRankCard(e, prospect)} style={{...styles.unrankedCard, opacity: draggedItem === prospect ? 0.5 : 1}}>{prospect}</div>
+                        <button key={prospect} onClick={() => setRanking([...ranking, prospect])} style={styles.addProspectBtn}>
+                          + {prospect}
+                        </button>
                       ))
                     )}
                   </div>
@@ -274,6 +277,8 @@
           rankButtonDisabled: { backgroundColor: '#404040', cursor: 'not-allowed', color: '#9ca3af' },
           prospectName: { fontWeight: '500', color: '#ffffff' },
           points: { fontSize: '12px', color: '#9ca3af', fontWeight: '500' },
+          prospectButtonList: { display: 'flex', flexDirection: 'column', gap: '8px' },
+          addProspectBtn: { padding: '12px 16px', backgroundColor: '#1a1a1a', border: '2px solid #dc2626', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '500', color: '#dc2626', textAlign: 'left', transition: 'all 0.2s' },
           unrankedList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '8px' },
           unrankedCard: { padding: '12px', backgroundColor: '#1a1a1a', border: '2px dashed #dc2626', borderRadius: '6px', cursor: 'grab', fontSize: '14px', fontWeight: '500', color: '#dc2626', textAlign: 'center' },
           actions: { display: 'flex', gap: '12px', alignItems: 'center', marginTop: '16px' },
