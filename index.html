@@ -6,7 +6,6 @@
     <title>Prospect Rankings</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/recharts@2.10.0/dist/Recharts.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
         * {
@@ -16,7 +15,7 @@
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background-color: #fafafa;
+            background-color: #000000;
         }
     </style>
 </head>
@@ -24,8 +23,10 @@
     <div id="root"></div>
     
     <script type="text/babel">
-        // Prospect Ranker Component
         function ProspectRanker() {
+          const SHEET_URL = 'https://script.google.com/macros/d/AKfycbyW-y2bwlaPmnhMLcc6Hb4UJ-ZVoZBbjCl7UulSfdUaBgTUCR-YvDteAGLTF5j4yyDP/usercripts';
+          const isAdmin = new URLSearchParams(window.location.search).get('admin') === 'true';
+          
           const [prospects, setProspects] = React.useState([]);
           const [ranking, setRanking] = React.useState([]);
           const [draggedItem, setDraggedItem] = React.useState(null);
@@ -33,42 +34,43 @@
           const [currentWeek, setCurrentWeek] = React.useState(1);
           const [history, setHistory] = React.useState([]);
           const [view, setView] = React.useState('rank');
-          const [newProspect, setNewProspect] = React.useState('');
           const [editMode, setEditMode] = React.useState(false);
+          const [loading, setLoading] = React.useState(true);
 
           React.useEffect(() => {
-            const saved = localStorage.getItem('prospectRankerData');
-            if (saved) {
-              const data = JSON.parse(saved);
-              setProspects(data.prospects || []);
-              setCurrentWeek(data.currentWeek || 1);
-              setHistory(data.history || []);
-              setRanking(data.ranking || []);
-            }
+            // Fetch prospects and rankings from Sheet
+            fetch(SHEET_URL)
+              .then(res => res.json())
+              .then(data => {
+                setProspects(data.prospects || []);
+                
+                // Parse rankings from Sheet
+                if (data.rankings && data.rankings.length > 0) {
+                  const historyMap = {};
+                  data.rankings.forEach(row => {
+                    const [date, week, prospect, rank, points] = row;
+                    if (date && week) { // Only process valid rows
+                      if (!historyMap[week]) {
+                        historyMap[week] = { week: parseInt(week), date: date, rankings: [] };
+                      }
+                      historyMap[week].rankings.push({
+                        prospect: prospect,
+                        points: parseInt(points) || 0
+                      });
+                    }
+                  });
+                  
+                  const historyArray = Object.values(historyMap).sort((a, b) => a.week - b.week);
+                  setHistory(historyArray);
+                  
+                  if (historyArray.length > 0) {
+                    setCurrentWeek(historyArray[historyArray.length - 1].week + 1);
+                  }
+                }
+              })
+              .catch(err => console.error('Failed to load Sheet:', err))
+              .finally(() => setLoading(false));
           }, []);
-
-          React.useEffect(() => {
-            localStorage.setItem('prospectRankerData', JSON.stringify({
-              prospects,
-              currentWeek,
-              history,
-              ranking
-            }));
-          }, [prospects, currentWeek, history, ranking]);
-
-          const addProspect = (e) => {
-            e.preventDefault();
-            if (newProspect.trim() && !prospects.includes(newProspect.trim())) {
-              const updated = [...prospects, newProspect.trim()].sort();
-              setProspects(updated);
-              setNewProspect('');
-            }
-          };
-
-          const removeProspect = (name) => {
-            setProspects(prospects.filter(p => p !== name));
-            setRanking(ranking.filter(p => p !== name));
-          };
 
           const handleDragStart = (e, prospect) => {
             setDraggedItem(prospect);
@@ -95,8 +97,6 @@
             setDraggedItem(null);
           };
 
-          const unrankedProspects = prospects.filter(p => !ranking.includes(p));
-
           const submitRanking = () => {
             const points = ranking.map((prospect, index) => ({
               prospect,
@@ -109,6 +109,12 @@
               rankings: points
             };
 
+            // Send to Google Sheet
+            fetch(SHEET_URL, {
+              method: 'POST',
+              body: JSON.stringify(newEntry)
+            }).catch(err => console.error('Failed to log to Sheet:', err));
+
             setHistory([...history, newEntry]);
             setRanking([]);
             setCurrentWeek(currentWeek + 1);
@@ -116,83 +122,50 @@
             setTimeout(() => setSubmitted(false), 2000);
           };
 
-          const getProspectMovement = (prospectName) => {
-            const entries = history.filter(h => 
-              h.rankings.some(r => r.prospect === prospectName)
-            );
-
-            return entries.map(entry => ({
-              week: entry.week,
-              points: entry.rankings.find(r => r.prospect === prospectName)?.points || 0,
-              rank: entry.rankings.findIndex(r => r.prospect === prospectName) + 1
-            }));
-          };
-
+          const unrankedProspects = prospects.filter(p => !ranking.includes(p));
           const currentRankings = history.length > 0 
             ? history[history.length - 1].rankings.sort((a, b) => b.points - a.points)
             : [];
 
-          const canSubmit = ranking.length > 0;
+          if (loading) {
+            return <div style={styles.container}><p style={{textAlign: 'center', color: '#fff', marginTop: '40px'}}>Loading rankings...</p></div>;
+          }
 
           return (
             <div style={styles.container}>
               <div style={styles.header}>
                 <div>
                   <h1 style={styles.title}>Prospect Rankings</h1>
-                  <p style={styles.subtitle}>Week {currentWeek}</p>
+                  <p style={styles.subtitle}>{isAdmin ? `Week ${currentWeek}` : 'View Only'}</p>
                 </div>
                 <div style={styles.nav}>
-                  <button 
-                    onClick={() => setView('rank')}
-                    style={{...styles.navBtn, ...(view === 'rank' ? styles.navBtnActive : {})}}
-                  >
-                    This Week
-                  </button>
-                  <button 
-                    onClick={() => setView('history')}
-                    style={{...styles.navBtn, ...(view === 'history' ? styles.navBtnActive : {})}}
-                  >
-                    History
-                  </button>
-                  <button 
-                    onClick={() => setEditMode(!editMode)}
-                    style={{...styles.navBtn, ...styles.editBtn}}
-                  >
-                    {editMode ? 'Done' : 'Manage List'}
-                  </button>
+                  {isAdmin ? (
+                    <>
+                      <button 
+                        onClick={() => setView('rank')}
+                        style={{...styles.navBtn, ...(view === 'rank' ? styles.navBtnActive : {})}}
+                      >
+                        This Week
+                      </button>
+                      <button 
+                        onClick={() => setView('history')}
+                        style={{...styles.navBtn, ...(view === 'history' ? styles.navBtnActive : {})}}
+                      >
+                        History
+                      </button>
+                    </>
+                  ) : (
+                    <button 
+                      onClick={() => setView(view === 'rank' ? 'history' : 'rank')}
+                      style={{...styles.navBtn, ...styles.navBtnActive}}
+                    >
+                      {view === 'rank' ? 'View Rankings' : 'Back'}
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {editMode && (
-                <div style={styles.editPanel}>
-                  <h3 style={styles.panelTitle}>Manage Prospects</h3>
-                  <form onSubmit={addProspect} style={styles.addForm}>
-                    <input
-                      type="text"
-                      value={newProspect}
-                      onChange={(e) => setNewProspect(e.target.value)}
-                      placeholder="Add new prospect..."
-                      style={styles.input}
-                    />
-                    <button type="submit" style={styles.addBtn}>Add</button>
-                  </form>
-                  <div style={styles.prospectList}>
-                    {prospects.map(p => (
-                      <div key={p} style={styles.prospectItem}>
-                        <span>{p}</span>
-                        <button 
-                          onClick={() => removeProspect(p)}
-                          style={styles.removeBtn}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {view === 'rank' && (
+              {isAdmin && view === 'rank' && (
                 <div style={styles.content}>
                   <div style={styles.rankingSection}>
                     <h2 style={styles.sectionTitle}>Your Ranking</h2>
@@ -254,8 +227,8 @@
                   <div style={styles.actions}>
                     <button
                       onClick={submitRanking}
-                      disabled={!canSubmit}
-                      style={{...styles.submitBtn, ...(canSubmit ? {} : styles.submitBtnDisabled)}}
+                      disabled={ranking.length === 0}
+                      style={{...styles.submitBtn, ...(ranking.length === 0 ? styles.submitBtnDisabled : {})}}
                     >
                       Submit Ranking
                     </button>
@@ -264,7 +237,7 @@
                 </div>
               )}
 
-              {view === 'history' && (
+              {isAdmin && view === 'history' && (
                 <div style={styles.content}>
                   <h2 style={styles.sectionTitle}>Rankings History</h2>
                   
@@ -272,26 +245,81 @@
                     <p style={styles.empty}>No rankings submitted yet</p>
                   ) : (
                     <>
-                      <div style={styles.historyGrid}>
-                        <div style={styles.chartContainer}>
-                          <h3 style={styles.chartTitle}>Latest Rankings (Week {currentWeek - 1})</h3>
-                          <table style={styles.table}>
-                            <tbody>
-                              {currentRankings.map((r, i) => (
-                                <tr key={i} style={styles.tableRow}>
-                                  <td style={styles.tableCell}>{i + 1}</td>
-                                  <td style={styles.tableCell}>{r.prospect}</td>
-                                  <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>{r.points} pts</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                      <div style={styles.chartContainer}>
+                        <h3 style={styles.chartTitle}>Latest Rankings (Week {history[history.length - 1].week})</h3>
+                        <table style={styles.table}>
+                          <tbody>
+                            {currentRankings.map((r, i) => (
+                              <tr key={i} style={styles.tableRow}>
+                                <td style={styles.tableCell}>{i + 1}</td>
+                                <td style={styles.tableCell}>{r.prospect}</td>
+                                <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>{r.points} pts</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
 
-                        <div style={styles.chartContainer}>
-                          <h3 style={styles.chartTitle}>Submission Timeline</h3>
-                          <div style={styles.timelineList}>
-                            {history.map((entry, idx) => (
+                      <div style={styles.chartContainer}>
+                        <h3 style={styles.chartTitle}>Submission Timeline</h3>
+                        <div style={styles.timelineList}>
+                          {history.map((entry, idx) => (
+                            <div key={idx} style={styles.timelineItem}>
+                              <div style={styles.timelineMeta}>
+                                <strong>Week {entry.week}</strong>
+                                <span>{entry.date}</span>
+                              </div>
+                              <div style={styles.weekRankings}>
+                                {entry.rankings.slice(0, 5).map((r, i) => (
+                                  <div key={i} style={styles.weekRank}>
+                                    {i + 1}. {r.prospect}
+                                  </div>
+                                ))}
+                                {entry.rankings.length > 5 && (
+                                  <div style={styles.weekRank}>... and {entry.rankings.length - 5} more</div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {!isAdmin && (
+                <div style={styles.content}>
+                  {view === 'rank' && history.length > 0 && (
+                    <div style={styles.chartContainer}>
+                      <h3 style={styles.chartTitle}>Latest Rankings (Week {history[history.length - 1].week})</h3>
+                      <table style={styles.table}>
+                        <tbody>
+                          {currentRankings.map((r, i) => (
+                            <tr key={i} style={styles.tableRow}>
+                              <td style={styles.tableCell}>{i + 1}</td>
+                              <td style={styles.tableCell}>{r.prospect}</td>
+                              <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>{r.points} pts</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {view === 'rank' && history.length === 0 && (
+                    <p style={styles.empty}>No rankings yet. Check back soon!</p>
+                  )}
+
+                  {view === 'history' && (
+                    <>
+                      <div style={styles.chartContainer}>
+                        <h3 style={styles.chartTitle}>All Rankings</h3>
+                        <div style={styles.timelineList}>
+                          {history.length === 0 ? (
+                            <p style={styles.empty}>No rankings submitted yet</p>
+                          ) : (
+                            history.map((entry, idx) => (
                               <div key={idx} style={styles.timelineItem}>
                                 <div style={styles.timelineMeta}>
                                   <strong>Week {entry.week}</strong>
@@ -308,40 +336,8 @@
                                   )}
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={styles.trendSection}>
-                        <h3 style={styles.chartTitle}>Prospect Movement Over Time</h3>
-                        <div style={styles.trendList}>
-                          {prospects.map(prospect => {
-                            const movement = getProspectMovement(prospect);
-                            if (movement.length === 0) return null;
-                            
-                            return (
-                              <div key={prospect} style={styles.trendItem}>
-                                <h4 style={styles.trendName}>{prospect}</h4>
-                                <table style={styles.table}>
-                                  <tbody>
-                                    <tr style={styles.tableHeaderRow}>
-                                      <td style={{...styles.tableCell, fontWeight: '600', textAlign: 'center'}}>Week</td>
-                                      <td style={{...styles.tableCell, fontWeight: '600', textAlign: 'center'}}>Rank</td>
-                                      <td style={{...styles.tableCell, fontWeight: '600', textAlign: 'center'}}>Points</td>
-                                    </tr>
-                                    {movement.map((m, i) => (
-                                      <tr key={i} style={styles.tableRow}>
-                                        <td style={{...styles.tableCell, textAlign: 'center'}}>{m.week}</td>
-                                        <td style={{...styles.tableCell, textAlign: 'center'}}>#{m.rank}</td>
-                                        <td style={{...styles.tableCell, textAlign: 'center', fontWeight: '600'}}>{m.points}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            );
-                          })}
+                            ))
+                          )}
                         </div>
                       </div>
                     </>
@@ -357,7 +353,7 @@
             maxWidth: '1200px',
             margin: '0 auto',
             padding: '20px',
-            backgroundColor: '#fafafa',
+            backgroundColor: '#000000',
             minHeight: '100vh'
           },
           header: {
@@ -365,18 +361,18 @@
             justifyContent: 'space-between',
             alignItems: 'flex-start',
             marginBottom: '30px',
-            borderBottom: '2px solid #e5e7eb',
+            borderBottom: '2px solid #dc2626',
             paddingBottom: '20px'
           },
           title: {
             fontSize: '32px',
             fontWeight: '700',
             margin: '0 0 4px 0',
-            color: '#111827'
+            color: '#ffffff'
           },
           subtitle: {
             fontSize: '14px',
-            color: '#6b7280',
+            color: '#9ca3af',
             margin: 0
           },
           nav: {
@@ -385,78 +381,19 @@
           },
           navBtn: {
             padding: '8px 16px',
-            border: '1px solid #d1d5db',
+            border: '1px solid #404040',
             borderRadius: '6px',
-            backgroundColor: '#fff',
+            backgroundColor: '#1a1a1a',
             cursor: 'pointer',
             fontSize: '14px',
             fontWeight: '500',
-            color: '#6b7280',
+            color: '#9ca3af',
             transition: 'all 0.2s'
           },
           navBtnActive: {
-            backgroundColor: '#3b82f6',
+            backgroundColor: '#dc2626',
             color: '#fff',
-            borderColor: '#3b82f6'
-          },
-          editBtn: {
-            backgroundColor: '#f3f4f6'
-          },
-          editPanel: {
-            backgroundColor: '#fff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-            padding: '20px',
-            marginBottom: '20px'
-          },
-          panelTitle: {
-            fontSize: '16px',
-            fontWeight: '600',
-            margin: '0 0 12px 0',
-            color: '#111827'
-          },
-          addForm: {
-            display: 'flex',
-            gap: '8px',
-            marginBottom: '16px'
-          },
-          input: {
-            flex: 1,
-            padding: '8px 12px',
-            border: '1px solid #d1d5db',
-            borderRadius: '4px',
-            fontSize: '14px'
-          },
-          addBtn: {
-            padding: '8px 16px',
-            backgroundColor: '#3b82f6',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: '500'
-          },
-          prospectList: {
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '8px'
-          },
-          prospectItem: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            backgroundColor: '#f3f4f6',
-            padding: '6px 12px',
-            borderRadius: '4px',
-            fontSize: '14px'
-          },
-          removeBtn: {
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            fontSize: '18px',
-            color: '#6b7280',
-            padding: 0
+            borderColor: '#dc2626'
           },
           content: {
             display: 'grid',
@@ -464,22 +401,35 @@
             gap: '20px'
           },
           rankingSection: {
-            backgroundColor: '#fff',
+            backgroundColor: '#111111',
             borderRadius: '8px',
             padding: '20px',
-            border: '1px solid #e5e7eb'
+            border: '1px solid #404040'
           },
           unrankedSection: {
-            backgroundColor: '#fff',
+            backgroundColor: '#111111',
             borderRadius: '8px',
             padding: '20px',
-            border: '1px solid #e5e7eb'
+            border: '1px solid #404040'
+          },
+          chartContainer: {
+            backgroundColor: '#111111',
+            borderRadius: '8px',
+            padding: '20px',
+            border: '1px solid #404040',
+            gridColumn: '1 / -1'
           },
           sectionTitle: {
             fontSize: '16px',
             fontWeight: '600',
             margin: '0 0 16px 0',
-            color: '#111827'
+            color: '#ffffff'
+          },
+          chartTitle: {
+            fontSize: '14px',
+            fontWeight: '600',
+            margin: '0 0 16px 0',
+            color: '#ffffff'
           },
           rankingList: {
             display: 'flex',
@@ -492,15 +442,15 @@
             alignItems: 'center',
             gap: '12px',
             padding: '12px',
-            backgroundColor: '#f9fafb',
-            border: '2px solid #e5e7eb',
+            backgroundColor: '#1a1a1a',
+            border: '2px solid #404040',
             borderRadius: '6px',
             cursor: 'grab'
           },
           rankNumber: {
             fontSize: '18px',
             fontWeight: '700',
-            color: '#3b82f6',
+            color: '#dc2626',
             minWidth: '28px',
             textAlign: 'center'
           },
@@ -512,11 +462,11 @@
           },
           prospectName: {
             fontWeight: '500',
-            color: '#111827'
+            color: '#ffffff'
           },
           points: {
             fontSize: '12px',
-            color: '#6b7280',
+            color: '#9ca3af',
             fontWeight: '500'
           },
           unrankedList: {
@@ -526,13 +476,13 @@
           },
           unrankedCard: {
             padding: '12px',
-            backgroundColor: '#f0f9ff',
-            border: '2px dashed #93c5fd',
+            backgroundColor: '#1a1a1a',
+            border: '2px dashed #dc2626',
             borderRadius: '6px',
             cursor: 'grab',
             fontSize: '14px',
             fontWeight: '500',
-            color: '#0c4a6e',
+            color: '#dc2626',
             textAlign: 'center'
           },
           actions: {
@@ -543,7 +493,7 @@
           },
           submitBtn: {
             padding: '12px 24px',
-            backgroundColor: '#10b981',
+            backgroundColor: '#dc2626',
             color: '#fff',
             border: 'none',
             borderRadius: '6px',
@@ -552,38 +502,19 @@
             fontSize: '14px'
           },
           submitBtnDisabled: {
-            backgroundColor: '#d1d5db',
+            backgroundColor: '#404040',
             cursor: 'not-allowed'
           },
           successMsg: {
-            color: '#10b981',
+            color: '#22c55e',
             fontSize: '14px',
             margin: 0
           },
           empty: {
             textAlign: 'center',
-            color: '#9ca3af',
+            color: '#6b7280',
             padding: '20px',
             fontStyle: 'italic'
-          },
-          historyGrid: {
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '20px',
-            marginBottom: '30px'
-          },
-          chartContainer: {
-            backgroundColor: '#fff',
-            borderRadius: '8px',
-            padding: '20px',
-            border: '1px solid #e5e7eb',
-            gridColumn: '1 / -1'
-          },
-          chartTitle: {
-            fontSize: '14px',
-            fontWeight: '600',
-            margin: '0 0 16px 0',
-            color: '#111827'
           },
           table: {
             width: '100%',
@@ -591,15 +522,12 @@
             fontSize: '14px'
           },
           tableRow: {
-            borderBottom: '1px solid #e5e7eb'
-          },
-          tableHeaderRow: {
-            backgroundColor: '#f9fafb'
+            borderBottom: '1px solid #404040'
           },
           tableCell: {
             padding: '10px 0',
             textAlign: 'left',
-            color: '#374151'
+            color: '#d1d5db'
           },
           timelineList: {
             display: 'flex',
@@ -608,45 +536,24 @@
           },
           timelineItem: {
             padding: '12px',
-            backgroundColor: '#f9fafb',
+            backgroundColor: '#1a1a1a',
             borderRadius: '6px',
-            borderLeft: '3px solid #3b82f6'
+            borderLeft: '3px solid #dc2626'
           },
           timelineMeta: {
             display: 'flex',
             justifyContent: 'space-between',
             fontSize: '12px',
             marginBottom: '8px',
-            color: '#6b7280'
+            color: '#9ca3af'
           },
           weekRankings: {
             fontSize: '13px',
             lineHeight: '1.6',
-            color: '#374151'
+            color: '#d1d5db'
           },
           weekRank: {
             marginBottom: '4px'
-          },
-          trendSection: {
-            backgroundColor: '#fff',
-            borderRadius: '8px',
-            padding: '20px',
-            border: '1px solid #e5e7eb',
-            gridColumn: '1 / -1'
-          },
-          trendList: {
-            display: 'grid',
-            gap: '24px'
-          },
-          trendItem: {
-            paddingBottom: '20px',
-            borderBottom: '1px solid #f3f4f6'
-          },
-          trendName: {
-            fontSize: '14px',
-            fontWeight: '600',
-            margin: '0 0 12px 0',
-            color: '#111827'
           }
         };
 
