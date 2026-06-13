@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prospect Rankings</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.10.0/dist/Recharts.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: #fafafa;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        // Prospect Ranker Component
+        function ProspectRanker() {
+          const [prospects, setProspects] = React.useState([]);
+          const [ranking, setRanking] = React.useState([]);
+          const [draggedItem, setDraggedItem] = React.useState(null);
+          const [submitted, setSubmitted] = React.useState(false);
+          const [currentWeek, setCurrentWeek] = React.useState(1);
+          const [history, setHistory] = React.useState([]);
+          const [view, setView] = React.useState('rank');
+          const [newProspect, setNewProspect] = React.useState('');
+          const [editMode, setEditMode] = React.useState(false);
+
+          React.useEffect(() => {
+            const saved = localStorage.getItem('prospectRankerData');
+            if (saved) {
+              const data = JSON.parse(saved);
+              setProspects(data.prospects || []);
+              setCurrentWeek(data.currentWeek || 1);
+              setHistory(data.history || []);
+              setRanking(data.ranking || []);
+            }
+          }, []);
+
+          React.useEffect(() => {
+            localStorage.setItem('prospectRankerData', JSON.stringify({
+              prospects,
+              currentWeek,
+              history,
+              ranking
+            }));
+          }, [prospects, currentWeek, history, ranking]);
+
+          const addProspect = (e) => {
+            e.preventDefault();
+            if (newProspect.trim() && !prospects.includes(newProspect.trim())) {
+              const updated = [...prospects, newProspect.trim()].sort();
+              setProspects(updated);
+              setNewProspect('');
+            }
+          };
+
+          const removeProspect = (name) => {
+            setProspects(prospects.filter(p => p !== name));
+            setRanking(ranking.filter(p => p !== name));
+          };
+
+          const handleDragStart = (e, prospect) => {
+            setDraggedItem(prospect);
+            e.dataTransfer.effectAllowed = 'move';
+          };
+
+          const handleDragOver = (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+          };
+
+          const handleDrop = (e, targetProspect) => {
+            e.preventDefault();
+            if (!draggedItem || draggedItem === targetProspect) return;
+
+            const draggedIndex = ranking.indexOf(draggedItem);
+            const targetIndex = ranking.indexOf(targetProspect);
+
+            const newRanking = [...ranking];
+            newRanking.splice(draggedIndex, 1);
+            newRanking.splice(targetIndex, 0, draggedItem);
+
+            setRanking(newRanking);
+            setDraggedItem(null);
+          };
+
+          const unrankedProspects = prospects.filter(p => !ranking.includes(p));
+
+          const submitRanking = () => {
+            const points = ranking.map((prospect, index) => ({
+              prospect,
+              points: ranking.length - index
+            }));
+
+            const newEntry = {
+              week: currentWeek,
+              date: new Date().toISOString().split('T')[0],
+              rankings: points
+            };
+
+            setHistory([...history, newEntry]);
+            setRanking([]);
+            setCurrentWeek(currentWeek + 1);
+            setSubmitted(true);
+            setTimeout(() => setSubmitted(false), 2000);
+          };
+
+          const getProspectMovement = (prospectName) => {
+            const entries = history.filter(h => 
+              h.rankings.some(r => r.prospect === prospectName)
+            );
+
+            return entries.map(entry => ({
+              week: entry.week,
+              points: entry.rankings.find(r => r.prospect === prospectName)?.points || 0,
+              rank: entry.rankings.findIndex(r => r.prospect === prospectName) + 1
+            }));
+          };
+
+          const currentRankings = history.length > 0 
+            ? history[history.length - 1].rankings.sort((a, b) => b.points - a.points)
+            : [];
+
+          const canSubmit = ranking.length > 0;
+
+          return (
+            <div style={styles.container}>
+              <div style={styles.header}>
+                <div>
+                  <h1 style={styles.title}>Prospect Rankings</h1>
+                  <p style={styles.subtitle}>Week {currentWeek}</p>
+                </div>
+                <div style={styles.nav}>
+                  <button 
+                    onClick={() => setView('rank')}
+                    style={{...styles.navBtn, ...(view === 'rank' ? styles.navBtnActive : {})}}
+                  >
+                    This Week
+                  </button>
+                  <button 
+                    onClick={() => setView('history')}
+                    style={{...styles.navBtn, ...(view === 'history' ? styles.navBtnActive : {})}}
+                  >
+                    History
+                  </button>
+                  <button 
+                    onClick={() => setEditMode(!editMode)}
+                    style={{...styles.navBtn, ...styles.editBtn}}
+                  >
+                    {editMode ? 'Done' : 'Manage List'}
+                  </button>
+                </div>
+              </div>
+
+              {editMode && (
+                <div style={styles.editPanel}>
+                  <h3 style={styles.panelTitle}>Manage Prospects</h3>
+                  <form onSubmit={addProspect} style={styles.addForm}>
+                    <input
+                      type="text"
+                      value={newProspect}
+                      onChange={(e) => setNewProspect(e.target.value)}
+                      placeholder="Add new prospect..."
+                      style={styles.input}
+                    />
+                    <button type="submit" style={styles.addBtn}>Add</button>
+                  </form>
+                  <div style={styles.prospectList}>
+                    {prospects.map(p => (
+                      <div key={p} style={styles.prospectItem}>
+                        <span>{p}</span>
+                        <button 
+                          onClick={() => removeProspect(p)}
+                          style={styles.removeBtn}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {view === 'rank' && (
+                <div style={styles.content}>
+                  <div style={styles.rankingSection}>
+                    <h2 style={styles.sectionTitle}>Your Ranking</h2>
+                    <div 
+                      style={styles.rankingList}
+                      onDragOver={handleDragOver}
+                    >
+                      {ranking.length === 0 ? (
+                        <p style={styles.empty}>Drag prospects here to rank them</p>
+                      ) : (
+                        ranking.map((prospect, index) => (
+                          <div
+                            key={prospect}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, prospect)}
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, prospect)}
+                            style={{
+                              ...styles.rankCard,
+                              opacity: draggedItem === prospect ? 0.5 : 1
+                            }}
+                          >
+                            <div style={styles.rankNumber}>{index + 1}</div>
+                            <div style={styles.rankContent}>
+                              <span style={styles.prospectName}>{prospect}</span>
+                              <span style={styles.points}>{ranking.length - index} pts</span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={styles.unrankedSection}>
+                    <h2 style={styles.sectionTitle}>Available</h2>
+                    <div style={styles.unrankedList}>
+                      {unrankedProspects.length === 0 ? (
+                        <p style={styles.empty}>All prospects ranked</p>
+                      ) : (
+                        unrankedProspects.map(prospect => (
+                          <div
+                            key={prospect}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, prospect)}
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, prospect)}
+                            style={{
+                              ...styles.unrankedCard,
+                              opacity: draggedItem === prospect ? 0.5 : 1
+                            }}
+                          >
+                            {prospect}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={styles.actions}>
+                    <button
+                      onClick={submitRanking}
+                      disabled={!canSubmit}
+                      style={{...styles.submitBtn, ...(canSubmit ? {} : styles.submitBtnDisabled)}}
+                    >
+                      Submit Ranking
+                    </button>
+                    {submitted && <p style={styles.successMsg}>✓ Ranking submitted</p>}
+                  </div>
+                </div>
+              )}
+
+              {view === 'history' && (
+                <div style={styles.content}>
+                  <h2 style={styles.sectionTitle}>Rankings History</h2>
+                  
+                  {history.length === 0 ? (
+                    <p style={styles.empty}>No rankings submitted yet</p>
+                  ) : (
+                    <>
+                      <div style={styles.historyGrid}>
+                        <div style={styles.chartContainer}>
+                          <h3 style={styles.chartTitle}>Latest Rankings (Week {currentWeek - 1})</h3>
+                          <table style={styles.table}>
+                            <tbody>
+                              {currentRankings.map((r, i) => (
+                                <tr key={i} style={styles.tableRow}>
+                                  <td style={styles.tableCell}>{i + 1}</td>
+                                  <td style={styles.tableCell}>{r.prospect}</td>
+                                  <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>{r.points} pts</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div style={styles.chartContainer}>
+                          <h3 style={styles.chartTitle}>Submission Timeline</h3>
+                          <div style={styles.timelineList}>
+                            {history.map((entry, idx) => (
+                              <div key={idx} style={styles.timelineItem}>
+                                <div style={styles.timelineMeta}>
+                                  <strong>Week {entry.week}</strong>
+                                  <span>{entry.date}</span>
+                                </div>
+                                <div style={styles.weekRankings}>
+                                  {entry.rankings.slice(0, 5).map((r, i) => (
+                                    <div key={i} style={styles.weekRank}>
+                                      {i + 1}. {r.prospect}
+                                    </div>
+                                  ))}
+                                  {entry.rankings.length > 5 && (
+                                    <div style={styles.weekRank}>... and {entry.rankings.length - 5} more</div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={styles.trendSection}>
+                        <h3 style={styles.chartTitle}>Prospect Movement Over Time</h3>
+                        <div style={styles.trendList}>
+                          {prospects.map(prospect => {
+                            const movement = getProspectMovement(prospect);
+                            if (movement.length === 0) return null;
+                            
+                            return (
+                              <div key={prospect} style={styles.trendItem}>
+                                <h4 style={styles.trendName}>{prospect}</h4>
+                                <table style={styles.table}>
+                                  <tbody>
+                                    <tr style={styles.tableHeaderRow}>
+                                      <td style={{...styles.tableCell, fontWeight: '600', textAlign: 'center'}}>Week</td>
+                                      <td style={{...styles.tableCell, fontWeight: '600', textAlign: 'center'}}>Rank</td>
+                                      <td style={{...styles.tableCell, fontWeight: '600', textAlign: 'center'}}>Points</td>
+                                    </tr>
+                                    {movement.map((m, i) => (
+                                      <tr key={i} style={styles.tableRow}>
+                                        <td style={{...styles.tableCell, textAlign: 'center'}}>{m.week}</td>
+                                        <td style={{...styles.tableCell, textAlign: 'center'}}>#{m.rank}</td>
+                                        <td style={{...styles.tableCell, textAlign: 'center', fontWeight: '600'}}>{m.points}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        const styles = {
+          container: {
+            maxWidth: '1200px',
+            margin: '0 auto',
+            padding: '20px',
+            backgroundColor: '#fafafa',
+            minHeight: '100vh'
+          },
+          header: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            marginBottom: '30px',
+            borderBottom: '2px solid #e5e7eb',
+            paddingBottom: '20px'
+          },
+          title: {
+            fontSize: '32px',
+            fontWeight: '700',
+            margin: '0 0 4px 0',
+            color: '#111827'
+          },
+          subtitle: {
+            fontSize: '14px',
+            color: '#6b7280',
+            margin: 0
+          },
+          nav: {
+            display: 'flex',
+            gap: '12px'
+          },
+          navBtn: {
+            padding: '8px 16px',
+            border: '1px solid #d1d5db',
+            borderRadius: '6px',
+            backgroundColor: '#fff',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '500',
+            color: '#6b7280',
+            transition: 'all 0.2s'
+          },
+          navBtnActive: {
+            backgroundColor: '#3b82f6',
+            color: '#fff',
+            borderColor: '#3b82f6'
+          },
+          editBtn: {
+            backgroundColor: '#f3f4f6'
+          },
+          editPanel: {
+            backgroundColor: '#fff',
+            border: '1px solid #e5e7eb',
+            borderRadius: '8px',
+            padding: '20px',
+            marginBottom: '20px'
+          },
+          panelTitle: {
+            fontSize: '16px',
+            fontWeight: '600',
+            margin: '0 0 12px 0',
+            color: '#111827'
+          },
+          addForm: {
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '16px'
+          },
+          input: {
+            flex: 1,
+            padding: '8px 12px',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            fontSize: '14px'
+          },
+          addBtn: {
+            padding: '8px 16px',
+            backgroundColor: '#3b82f6',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: '500'
+          },
+          prospectList: {
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '8px'
+          },
+          prospectItem: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            backgroundColor: '#f3f4f6',
+            padding: '6px 12px',
+            borderRadius: '4px',
+            fontSize: '14px'
+          },
+          removeBtn: {
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '18px',
+            color: '#6b7280',
+            padding: 0
+          },
+          content: {
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '20px'
+          },
+          rankingSection: {
+            backgroundColor: '#fff',
+            borderRadius: '8px',
+            padding: '20px',
+            border: '1px solid #e5e7eb'
+          },
+          unrankedSection: {
+            backgroundColor: '#fff',
+            borderRadius: '8px',
+            padding: '20px',
+            border: '1px solid #e5e7eb'
+          },
+          sectionTitle: {
+            fontSize: '16px',
+            fontWeight: '600',
+            margin: '0 0 16px 0',
+            color: '#111827'
+          },
+          rankingList: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            minHeight: '300px'
+          },
+          rankCard: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '12px',
+            backgroundColor: '#f9fafb',
+            border: '2px solid #e5e7eb',
+            borderRadius: '6px',
+            cursor: 'grab'
+          },
+          rankNumber: {
+            fontSize: '18px',
+            fontWeight: '700',
+            color: '#3b82f6',
+            minWidth: '28px',
+            textAlign: 'center'
+          },
+          rankContent: {
+            flex: 1,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          },
+          prospectName: {
+            fontWeight: '500',
+            color: '#111827'
+          },
+          points: {
+            fontSize: '12px',
+            color: '#6b7280',
+            fontWeight: '500'
+          },
+          unrankedList: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+            gap: '8px'
+          },
+          unrankedCard: {
+            padding: '12px',
+            backgroundColor: '#f0f9ff',
+            border: '2px dashed #93c5fd',
+            borderRadius: '6px',
+            cursor: 'grab',
+            fontSize: '14px',
+            fontWeight: '500',
+            color: '#0c4a6e',
+            textAlign: 'center'
+          },
+          actions: {
+            gridColumn: '1 / -1',
+            display: 'flex',
+            gap: '12px',
+            alignItems: 'center'
+          },
+          submitBtn: {
+            padding: '12px 24px',
+            backgroundColor: '#10b981',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '14px'
+          },
+          submitBtnDisabled: {
+            backgroundColor: '#d1d5db',
+            cursor: 'not-allowed'
+          },
+          successMsg: {
+            color: '#10b981',
+            fontSize: '14px',
+            margin: 0
+          },
+          empty: {
+            textAlign: 'center',
+            color: '#9ca3af',
+            padding: '20px',
+            fontStyle: 'italic'
+          },
+          historyGrid: {
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '20px',
+            marginBottom: '30px'
+          },
+          chartContainer: {
+            backgroundColor: '#fff',
+            borderRadius: '8px',
+            padding: '20px',
+            border: '1px solid #e5e7eb',
+            gridColumn: '1 / -1'
+          },
+          chartTitle: {
+            fontSize: '14px',
+            fontWeight: '600',
+            margin: '0 0 16px 0',
+            color: '#111827'
+          },
+          table: {
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontSize: '14px'
+          },
+          tableRow: {
+            borderBottom: '1px solid #e5e7eb'
+          },
+          tableHeaderRow: {
+            backgroundColor: '#f9fafb'
+          },
+          tableCell: {
+            padding: '10px 0',
+            textAlign: 'left',
+            color: '#374151'
+          },
+          timelineList: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          },
+          timelineItem: {
+            padding: '12px',
+            backgroundColor: '#f9fafb',
+            borderRadius: '6px',
+            borderLeft: '3px solid #3b82f6'
+          },
+          timelineMeta: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            fontSize: '12px',
+            marginBottom: '8px',
+            color: '#6b7280'
+          },
+          weekRankings: {
+            fontSize: '13px',
+            lineHeight: '1.6',
+            color: '#374151'
+          },
+          weekRank: {
+            marginBottom: '4px'
+          },
+          trendSection: {
+            backgroundColor: '#fff',
+            borderRadius: '8px',
+            padding: '20px',
+            border: '1px solid #e5e7eb',
+            gridColumn: '1 / -1'
+          },
+          trendList: {
+            display: 'grid',
+            gap: '24px'
+          },
+          trendItem: {
+            paddingBottom: '20px',
+            borderBottom: '1px solid #f3f4f6'
+          },
+          trendName: {
+            fontSize: '14px',
+            fontWeight: '600',
+            margin: '0 0 12px 0',
+            color: '#111827'
+          }
+        };
+
+        ReactDOM.render(<ProspectRanker />, document.getElementById('root'));
+    </script>
+</body>
+</html>
