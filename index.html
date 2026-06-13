@@ -24,6 +24,9 @@
     
     <script type="text/babel">
         function ProspectRanker() {
+          const SHEET_ID = '1GYw-olY5z4xu3JvoMtxPTkzKQuSrxb3chg9eUfeoQao';
+          const PROSPECTS_CSV = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
+          const RANKINGS_CSV = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=1`;
           const SHEET_URL = 'https://script.google.com/macros/d/AKfycbxaOtF9YFlzUPTa-ABuuLk7HI3qG5MKySZXY_MEWQt_ZRv47AldrU58Nz6orLrFPoAnNQ/usercripts';
           const isAdmin = new URLSearchParams(window.location.search).get('admin') === 'true';
           
@@ -38,38 +41,48 @@
           const [loading, setLoading] = React.useState(true);
 
           React.useEffect(() => {
-            // Fetch prospects and rankings from Sheet
-            fetch(SHEET_URL)
-              .then(res => res.json())
-              .then(data => {
-                setProspects(data.prospects || []);
-                
-                // Parse rankings from Sheet
-                if (data.rankings && data.rankings.length > 0) {
-                  const historyMap = {};
-                  data.rankings.forEach(row => {
-                    const [date, week, prospect, rank, points] = row;
-                    if (date && week) { // Only process valid rows
-                      if (!historyMap[week]) {
-                        historyMap[week] = { week: parseInt(week), date: date, rankings: [] };
-                      }
-                      historyMap[week].rankings.push({
-                        prospect: prospect,
-                        points: parseInt(points) || 0
-                      });
+            // Fetch prospects from CSV
+            Promise.all([
+              fetch(PROSPECTS_CSV).then(r => r.text()),
+              fetch(RANKINGS_CSV).then(r => r.text())
+            ])
+            .then(([prospectsCsv, rankingsCsv]) => {
+              // Parse prospects CSV
+              const prospectLines = prospectsCsv.trim().split('\n');
+              const prospects = prospectLines
+                .slice(1) // Skip header
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+              
+              setProspects(prospects);
+              
+              // Parse rankings CSV
+              const rankingLines = rankingsCsv.trim().split('\n');
+              if (rankingLines.length > 1) {
+                const historyMap = {};
+                rankingLines.slice(1).forEach(line => {
+                  const [date, week, prospect, rank, points] = line.split(',').map(v => v.trim());
+                  if (date && week) {
+                    if (!historyMap[week]) {
+                      historyMap[week] = { week: parseInt(week), date: date, rankings: [] };
                     }
-                  });
-                  
-                  const historyArray = Object.values(historyMap).sort((a, b) => a.week - b.week);
-                  setHistory(historyArray);
-                  
-                  if (historyArray.length > 0) {
-                    setCurrentWeek(historyArray[historyArray.length - 1].week + 1);
+                    historyMap[week].rankings.push({
+                      prospect: prospect,
+                      points: parseInt(points) || 0
+                    });
                   }
+                });
+                
+                const historyArray = Object.values(historyMap).sort((a, b) => a.week - b.week);
+                setHistory(historyArray);
+                
+                if (historyArray.length > 0) {
+                  setCurrentWeek(historyArray[historyArray.length - 1].week + 1);
                 }
-              })
-              .catch(err => console.error('Failed to load Sheet:', err))
-              .finally(() => setLoading(false));
+              }
+            })
+            .catch(err => console.error('Failed to load Sheet:', err))
+            .finally(() => setLoading(false));
           }, []);
 
           const handleDragStart = (e, prospect) => {
