@@ -95,21 +95,11 @@
             e.dataTransfer.dropEffect = 'move';
           };
 
-          const handleDrop = (e, targetProspect) => {
+          const handleDropOnContainer = (e) => {
             e.preventDefault();
             if (!draggedItem) return;
-
-            if (ranking.includes(draggedItem)) {
-              // Already ranked - reorder
-              if (draggedItem === targetProspect) return;
-              const draggedIndex = ranking.indexOf(draggedItem);
-              const targetIndex = ranking.indexOf(targetProspect);
-              const newRanking = [...ranking];
-              newRanking.splice(draggedIndex, 1);
-              newRanking.splice(targetIndex, 0, draggedItem);
-              setRanking(newRanking);
-            } else {
-              // Not yet ranked - add it
+            
+            if (!ranking.includes(draggedItem)) {
               setRanking([...ranking, draggedItem]);
             }
             setDraggedItem(null);
@@ -190,6 +180,7 @@
                     <div 
                       style={styles.rankingList}
                       onDragOver={handleDragOver}
+                      onDrop={handleDropOnContainer}
                     >
                       {ranking.length === 0 ? (
                         <p style={styles.empty}>Drag prospects here to rank them</p>
