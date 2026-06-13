@@ -73,7 +73,19 @@
             setProspects(prospects.filter(p => p !== name));
           };
 
-          const handleDragStart = (e, prospect) => {
+          const moveRankUp = (index) => {
+            if (index === 0) return;
+            const newRanking = [...ranking];
+            [newRanking[index], newRanking[index - 1]] = [newRanking[index - 1], newRanking[index]];
+            setRanking(newRanking);
+          };
+
+          const moveRankDown = (index) => {
+            if (index === ranking.length - 1) return;
+            const newRanking = [...ranking];
+            [newRanking[index], newRanking[index + 1]] = [newRanking[index + 1], newRanking[index]];
+            setRanking(newRanking);
+          };
             setDraggedItem(prospect);
             e.dataTransfer.effectAllowed = 'move';
           };
@@ -237,6 +249,22 @@
                             <div style={styles.rankContent}>
                               <span style={styles.prospectName}>{prospect}</span>
                               <span style={styles.points}>{ranking.length - index} pts</span>
+                            </div>
+                            <div style={styles.rankButtons}>
+                              <button
+                                onClick={() => moveRankUp(index)}
+                                disabled={index === 0}
+                                style={{...styles.rankButton, ...(index === 0 ? styles.rankButtonDisabled : {})}}
+                              >
+                                ↑
+                              </button>
+                              <button
+                                onClick={() => moveRankDown(index)}
+                                disabled={index === ranking.length - 1}
+                                style={{...styles.rankButton, ...(index === ranking.length - 1 ? styles.rankButtonDisabled : {})}}
+                              >
+                                ↓
+                              </button>
                             </div>
                           </div>
                         ))
@@ -442,6 +470,27 @@
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center'
+          },
+          rankButtons: {
+            display: 'flex',
+            gap: '4px'
+          },
+          rankButton: {
+            width: '28px',
+            height: '28px',
+            padding: '0',
+            backgroundColor: '#dc2626',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: '600'
+          },
+          rankButtonDisabled: {
+            backgroundColor: '#404040',
+            cursor: 'not-allowed',
+            color: '#9ca3af'
           },
           prospectName: {
             fontWeight: '500',
