@@ -19,7 +19,7 @@
           const SHEET_ID = '1GYw-olY5z4xu3JvoMtxPTkzKQuSrxb3chg9eUfeoQao';
           const PROSPECTS_CSV = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
           const VOTES_CSV = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=1565266401`;
-          const SHEET_URL = 'https://script.google.com/macros/d/AKfycbxdTUrrWY2xKWZKbkkLKSSGYYZpB5YalhMKsyILX22U8JLM1u-jVPQrzPqDZ1P1r5li3A/usercripts';
+          const SHEETDB_URL = 'https://sheetdb.io/api/v1/gfecdkfnm8a5x/Rankings';
           const isAdmin = new URLSearchParams(window.location.search).get('admin') === 'true';
           
           const [prospects, setProspects] = React.useState([]);
@@ -124,13 +124,22 @@
 
           const submitVote = () => {
             const points = ranking.map((prospect, index) => ({ prospect, points: ranking.length - index }));
-            const newEntry = { ranking: points, timestamp: new Date().toISOString().split('T')[0] };
+            const date = new Date().toISOString().split('T')[0];
             
-            fetch(SHEET_URL, {
+            const rows = ranking.map((prospect, index) => ({
+              Date: date,
+              Week: 1,
+              Prospect_name: prospect,
+              Rank: index + 1,
+              Points: ranking.length - index
+            }));
+            
+            fetch(SHEETDB_URL, {
               method: 'POST',
-              body: JSON.stringify(newEntry)
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ data: rows })
             }).then(() => {
-              setVotes([...votes, newEntry]);
+              setVotes([...votes, { ranking: points, timestamp: date }]);
               setRanking([]);
               setSubmitted(true);
               setTimeout(() => setSubmitted(false), 2000);
