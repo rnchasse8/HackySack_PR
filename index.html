@@ -26,64 +26,52 @@
         function ProspectRanker() {
           const SHEET_ID = '1GYw-olY5z4xu3JvoMtxPTkzKQuSrxb3chg9eUfeoQao';
           const PROSPECTS_CSV = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
-          const RANKINGS_CSV = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=1565266401`;
-          const SHEET_URL = 'https://script.google.com/macros/d/AKfycbxaOtF9YFlzUPTa-ABuuLk7HI3qG5MKySZXY_MEWQt_ZRv47AldrU58Nz6orLrFPoAnNQ/usercripts';
           const isAdmin = new URLSearchParams(window.location.search).get('admin') === 'true';
           
           const [prospects, setProspects] = React.useState([]);
+          const [newProspect, setNewProspect] = React.useState('');
           const [ranking, setRanking] = React.useState([]);
+          const [votes, setVotes] = React.useState([]);
           const [draggedItem, setDraggedItem] = React.useState(null);
           const [submitted, setSubmitted] = React.useState(false);
-          const [currentWeek, setCurrentWeek] = React.useState(1);
-          const [history, setHistory] = React.useState([]);
-          const [view, setView] = React.useState('rank');
-          const [editMode, setEditMode] = React.useState(false);
           const [loading, setLoading] = React.useState(true);
 
           React.useEffect(() => {
-            // Fetch prospects from CSV
-            Promise.all([
-              fetch(PROSPECTS_CSV).then(r => r.text()),
-              fetch(RANKINGS_CSV).then(r => r.text())
-            ])
-            .then(([prospectsCsv, rankingsCsv]) => {
-              // Parse prospects CSV
-              const prospectLines = prospectsCsv.trim().split('\n');
-              const prospects = prospectLines
-                .slice(1) // Skip header
-                .map(line => line.trim())
-                .filter(line => line.length > 0);
-              
-              setProspects(prospects);
-              
-              // Parse rankings CSV
-              const rankingLines = rankingsCsv.trim().split('\n');
-              if (rankingLines.length > 1) {
-                const historyMap = {};
-                rankingLines.slice(1).forEach(line => {
-                  const [date, week, prospect, rank, points] = line.split(',').map(v => v.trim());
-                  if (date && week) {
-                    if (!historyMap[week]) {
-                      historyMap[week] = { week: parseInt(week), date: date, rankings: [] };
-                    }
-                    historyMap[week].rankings.push({
-                      prospect: prospect,
-                      points: parseInt(points) || 0
-                    });
-                  }
-                });
-                
-                const historyArray = Object.values(historyMap).sort((a, b) => a.week - b.week);
-                setHistory(historyArray);
-                
-                if (historyArray.length > 0) {
-                  setCurrentWeek(historyArray[historyArray.length - 1].week + 1);
-                }
-              }
-            })
-            .catch(err => console.error('Failed to load Sheet:', err))
-            .finally(() => setLoading(false));
+            fetch(PROSPECTS_CSV)
+              .then(r => r.text())
+              .then(csv => {
+                const lines = csv.trim().split('\n');
+                const prospectsData = lines
+                  .slice(1)
+                  .map(line => line.trim())
+                  .filter(line => line.length > 0);
+                setProspects(prospectsData);
+              })
+              .catch(err => console.error('Failed to load prospects:', err))
+              .finally(() => setLoading(false));
+            
+            const savedVotes = localStorage.getItem('prospectVotes');
+            if (savedVotes) {
+              setVotes(JSON.parse(savedVotes));
+            }
           }, []);
+
+          React.useEffect(() => {
+            localStorage.setItem('prospectVotes', JSON.stringify(votes));
+          }, [votes]);
+
+          const addProspect = (e) => {
+            e.preventDefault();
+            if (newProspect.trim() && !prospects.includes(newProspect.trim())) {
+              const updated = [...prospects, newProspect.trim()].sort();
+              setProspects(updated);
+              setNewProspect('');
+            }
+          };
+
+          const removeProspect = (name) => {
+            setProspects(prospects.filter(p => p !== name));
+          };
 
           const handleDragStart = (e, prospect) => {
             setDraggedItem(prospect);
@@ -95,11 +83,17 @@
             e.dataTransfer.dropEffect = 'move';
           };
 
+          const handleDropOnContainer = (e) => {
+            e.preventDefault();
+            if (!draggedItem || ranking.includes(draggedItem)) return;
+            setRanking([...ranking, draggedItem]);
+            setDraggedItem(null);
+          };
+
           const handleDropOnRankCard = (e, targetProspect) => {
             e.preventDefault();
             if (!draggedItem) return;
 
-            // If dragging within ranking list, reorder
             if (ranking.includes(draggedItem) && ranking.includes(targetProspect)) {
               if (draggedItem === targetProspect) return;
               const draggedIndex = ranking.indexOf(draggedItem);
@@ -109,54 +103,50 @@
               newRanking.splice(targetIndex, 0, draggedItem);
               setRanking(newRanking);
             } else if (!ranking.includes(draggedItem)) {
-              // Adding from available
               setRanking([...ranking, draggedItem]);
             }
             setDraggedItem(null);
           };
 
-          const handleDropOnContainer = (e) => {
-            e.preventDefault();
-            if (!draggedItem) return;
-            
-            if (!ranking.includes(draggedItem)) {
-              setRanking([...ranking, draggedItem]);
-            }
-            setDraggedItem(null);
-          };
-
-          const submitRanking = () => {
+          const submitVote = () => {
             const points = ranking.map((prospect, index) => ({
               prospect,
               points: ranking.length - index
             }));
-
-            const newEntry = {
-              week: currentWeek,
-              date: new Date().toISOString().split('T')[0],
-              rankings: points
-            };
-
-            // Send to Google Sheet
-            fetch(SHEET_URL, {
-              method: 'POST',
-              body: JSON.stringify(newEntry)
-            }).catch(err => console.error('Failed to log to Sheet:', err));
-
-            setHistory([...history, newEntry]);
+            
+            setVotes([...votes, { ranking: points, timestamp: new Date().toISOString() }]);
             setRanking([]);
-            setCurrentWeek(currentWeek + 1);
             setSubmitted(true);
             setTimeout(() => setSubmitted(false), 2000);
           };
 
+          const calculateAverages = () => {
+            if (votes.length === 0) return [];
+            
+            const totals = {};
+            const counts = {};
+            
+            votes.forEach(vote => {
+              vote.ranking.forEach(item => {
+                totals[item.prospect] = (totals[item.prospect] || 0) + item.points;
+                counts[item.prospect] = (counts[item.prospect] || 0) + 1;
+              });
+            });
+            
+            const averages = Object.keys(totals).map(prospect => ({
+              prospect,
+              avgPoints: totals[prospect] / counts[prospect],
+              voteCount: counts[prospect]
+            })).sort((a, b) => b.avgPoints - a.avgPoints);
+            
+            return averages;
+          };
+
           const unrankedProspects = prospects.filter(p => !ranking.includes(p));
-          const currentRankings = history.length > 0 
-            ? history[history.length - 1].rankings.sort((a, b) => b.points - a.points)
-            : [];
+          const averageRankings = calculateAverages();
 
           if (loading) {
-            return <div style={styles.container}><p style={{textAlign: 'center', color: '#fff', marginTop: '40px'}}>Loading rankings...</p></div>;
+            return <div style={styles.container}><p style={{textAlign: 'center', color: '#fff', marginTop: '40px'}}>Loading...</p></div>;
           }
 
           return (
@@ -164,39 +154,65 @@
               <div style={styles.header}>
                 <div>
                   <h1 style={styles.title}>Prospect Rankings</h1>
-                  <p style={styles.subtitle}>{isAdmin ? `Week ${currentWeek}` : 'View Only'}</p>
+                  <p style={styles.subtitle}>{isAdmin ? 'Admin' : 'Vote'}</p>
                 </div>
-                <div style={styles.nav}>
-                  {isAdmin ? (
-                    <>
-                      <button 
-                        onClick={() => setView('rank')}
-                        style={{...styles.navBtn, ...(view === 'rank' ? styles.navBtnActive : {})}}
-                      >
-                        This Week
-                      </button>
-                      <button 
-                        onClick={() => setView('history')}
-                        style={{...styles.navBtn, ...(view === 'history' ? styles.navBtnActive : {})}}
-                      >
-                        History
-                      </button>
-                    </>
-                  ) : (
-                    <button 
-                      onClick={() => setView(view === 'rank' ? 'history' : 'rank')}
-                      style={{...styles.navBtn, ...styles.navBtnActive}}
-                    >
-                      {view === 'rank' ? 'View Rankings' : 'Back'}
-                    </button>
-                  )}
-                </div>
+                <div style={styles.badge}>{votes.length} votes</div>
               </div>
 
-              {isAdmin && view === 'rank' && (
-                <div style={styles.content}>
-                  <div style={styles.rankingSection}>
-                    <h2 style={styles.sectionTitle}>Your Ranking</h2>
+              {isAdmin ? (
+                <div style={styles.adminContent}>
+                  <div style={styles.section}>
+                    <h2 style={styles.sectionTitle}>Manage Prospects</h2>
+                    <form onSubmit={addProspect} style={styles.addForm}>
+                      <input
+                        type="text"
+                        value={newProspect}
+                        onChange={(e) => setNewProspect(e.target.value)}
+                        placeholder="Add new prospect..."
+                        style={styles.input}
+                      />
+                      <button type="submit" style={styles.addBtn}>Add</button>
+                    </form>
+                    <div style={styles.prospectList}>
+                      {prospects.map(p => (
+                        <div key={p} style={styles.prospectItem}>
+                          <span>{p}</span>
+                          <button 
+                            onClick={() => removeProspect(p)}
+                            style={styles.removeBtn}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={styles.section}>
+                    <h2 style={styles.sectionTitle}>Average Rankings ({votes.length} votes)</h2>
+                    {averageRankings.length === 0 ? (
+                      <p style={styles.empty}>No votes yet</p>
+                    ) : (
+                      <table style={styles.table}>
+                        <tbody>
+                          {averageRankings.map((r, i) => (
+                            <tr key={i} style={styles.tableRow}>
+                              <td style={styles.tableCell}>{i + 1}</td>
+                              <td style={styles.tableCell}>{r.prospect}</td>
+                              <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>
+                                {r.avgPoints.toFixed(1)} pts
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div style={styles.votingContent}>
+                  <div style={styles.votingSection}>
+                    <h2 style={styles.sectionTitle}>Your Vote</h2>
                     <div 
                       style={styles.rankingList}
                       onDragOver={handleDragOver}
@@ -226,9 +242,19 @@
                         ))
                       )}
                     </div>
+                    <div style={styles.actions}>
+                      <button
+                        onClick={submitVote}
+                        disabled={ranking.length === 0}
+                        style={{...styles.submitBtn, ...(ranking.length === 0 ? styles.submitBtnDisabled : {})}}
+                      >
+                        Submit Vote
+                      </button>
+                      {submitted && <p style={styles.successMsg}>✓ Vote submitted</p>}
+                    </div>
                   </div>
 
-                  <div style={styles.unrankedSection}>
+                  <div style={styles.votingSection}>
                     <h2 style={styles.sectionTitle}>Available</h2>
                     <div style={styles.unrankedList}>
                       {unrankedProspects.length === 0 ? (
@@ -240,7 +266,7 @@
                             draggable
                             onDragStart={(e) => handleDragStart(e, prospect)}
                             onDragOver={handleDragOver}
-                            onDrop={(e) => handleDrop(e, prospect)}
+                            onDrop={(e) => handleDropOnRankCard(e, prospect)}
                             style={{
                               ...styles.unrankedCard,
                               opacity: draggedItem === prospect ? 0.5 : 1
@@ -253,124 +279,26 @@
                     </div>
                   </div>
 
-                  <div style={styles.actions}>
-                    <button
-                      onClick={submitRanking}
-                      disabled={ranking.length === 0}
-                      style={{...styles.submitBtn, ...(ranking.length === 0 ? styles.submitBtnDisabled : {})}}
-                    >
-                      Submit Ranking
-                    </button>
-                    {submitted && <p style={styles.successMsg}>✓ Ranking submitted</p>}
-                  </div>
-                </div>
-              )}
-
-              {isAdmin && view === 'history' && (
-                <div style={styles.content}>
-                  <h2 style={styles.sectionTitle}>Rankings History</h2>
-                  
-                  {history.length === 0 ? (
-                    <p style={styles.empty}>No rankings submitted yet</p>
-                  ) : (
-                    <>
-                      <div style={styles.chartContainer}>
-                        <h3 style={styles.chartTitle}>Latest Rankings (Week {history[history.length - 1].week})</h3>
-                        <table style={styles.table}>
-                          <tbody>
-                            {currentRankings.map((r, i) => (
-                              <tr key={i} style={styles.tableRow}>
-                                <td style={styles.tableCell}>{i + 1}</td>
-                                <td style={styles.tableCell}>{r.prospect}</td>
-                                <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>{r.points} pts</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div style={styles.chartContainer}>
-                        <h3 style={styles.chartTitle}>Submission Timeline</h3>
-                        <div style={styles.timelineList}>
-                          {history.map((entry, idx) => (
-                            <div key={idx} style={styles.timelineItem}>
-                              <div style={styles.timelineMeta}>
-                                <strong>Week {entry.week}</strong>
-                                <span>{entry.date}</span>
-                              </div>
-                              <div style={styles.weekRankings}>
-                                {entry.rankings.slice(0, 5).map((r, i) => (
-                                  <div key={i} style={styles.weekRank}>
-                                    {i + 1}. {r.prospect}
-                                  </div>
-                                ))}
-                                {entry.rankings.length > 5 && (
-                                  <div style={styles.weekRank}>... and {entry.rankings.length - 5} more</div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {!isAdmin && (
-                <div style={styles.content}>
-                  {view === 'rank' && history.length > 0 && (
-                    <div style={styles.chartContainer}>
-                      <h3 style={styles.chartTitle}>Latest Rankings (Week {history[history.length - 1].week})</h3>
+                  <div style={{...styles.votingSection, gridColumn: '1 / -1'}}>
+                    <h2 style={styles.sectionTitle}>Average Rankings ({votes.length} votes)</h2>
+                    {averageRankings.length === 0 ? (
+                      <p style={styles.empty}>Be the first to vote!</p>
+                    ) : (
                       <table style={styles.table}>
                         <tbody>
-                          {currentRankings.map((r, i) => (
+                          {averageRankings.map((r, i) => (
                             <tr key={i} style={styles.tableRow}>
                               <td style={styles.tableCell}>{i + 1}</td>
                               <td style={styles.tableCell}>{r.prospect}</td>
-                              <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>{r.points} pts</td>
+                              <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>
+                                {r.avgPoints.toFixed(1)} pts
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
-                    </div>
-                  )}
-
-                  {view === 'rank' && history.length === 0 && (
-                    <p style={styles.empty}>No rankings yet. Check back soon!</p>
-                  )}
-
-                  {view === 'history' && (
-                    <>
-                      <div style={styles.chartContainer}>
-                        <h3 style={styles.chartTitle}>All Rankings</h3>
-                        <div style={styles.timelineList}>
-                          {history.length === 0 ? (
-                            <p style={styles.empty}>No rankings submitted yet</p>
-                          ) : (
-                            history.map((entry, idx) => (
-                              <div key={idx} style={styles.timelineItem}>
-                                <div style={styles.timelineMeta}>
-                                  <strong>Week {entry.week}</strong>
-                                  <span>{entry.date}</span>
-                                </div>
-                                <div style={styles.weekRankings}>
-                                  {entry.rankings.slice(0, 5).map((r, i) => (
-                                    <div key={i} style={styles.weekRank}>
-                                      {i + 1}. {r.prospect}
-                                    </div>
-                                  ))}
-                                  {entry.rankings.length > 5 && (
-                                    <div style={styles.weekRank}>... and {entry.rankings.length - 5} more</div>
-                                  )}
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -404,49 +332,35 @@
             color: '#9ca3af',
             margin: 0
           },
-          nav: {
-            display: 'flex',
-            gap: '12px'
-          },
-          navBtn: {
-            padding: '8px 16px',
-            border: '1px solid #404040',
-            borderRadius: '6px',
-            backgroundColor: '#1a1a1a',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: '500',
-            color: '#9ca3af',
-            transition: 'all 0.2s'
-          },
-          navBtnActive: {
+          badge: {
+            padding: '6px 12px',
             backgroundColor: '#dc2626',
             color: '#fff',
-            borderColor: '#dc2626'
+            borderRadius: '4px',
+            fontSize: '12px',
+            fontWeight: '600'
           },
-          content: {
+          adminContent: {
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: '20px'
           },
-          rankingSection: {
+          votingContent: {
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '20px'
+          },
+          section: {
             backgroundColor: '#111111',
             borderRadius: '8px',
             padding: '20px',
             border: '1px solid #404040'
           },
-          unrankedSection: {
+          votingSection: {
             backgroundColor: '#111111',
             borderRadius: '8px',
             padding: '20px',
             border: '1px solid #404040'
-          },
-          chartContainer: {
-            backgroundColor: '#111111',
-            borderRadius: '8px',
-            padding: '20px',
-            border: '1px solid #404040',
-            gridColumn: '1 / -1'
           },
           sectionTitle: {
             fontSize: '16px',
@@ -454,11 +368,51 @@
             margin: '0 0 16px 0',
             color: '#ffffff'
           },
-          chartTitle: {
+          addForm: {
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '16px'
+          },
+          input: {
+            flex: 1,
+            padding: '8px 12px',
+            border: '1px solid #404040',
+            borderRadius: '4px',
             fontSize: '14px',
-            fontWeight: '600',
-            margin: '0 0 16px 0',
+            backgroundColor: '#1a1a1a',
             color: '#ffffff'
+          },
+          addBtn: {
+            padding: '8px 16px',
+            backgroundColor: '#dc2626',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: '500'
+          },
+          prospectList: {
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '8px'
+          },
+          prospectItem: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            backgroundColor: '#262626',
+            padding: '6px 12px',
+            borderRadius: '4px',
+            fontSize: '14px',
+            color: '#ffffff'
+          },
+          removeBtn: {
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '18px',
+            color: '#9ca3af',
+            padding: 0
           },
           rankingList: {
             display: 'flex',
@@ -515,10 +469,10 @@
             textAlign: 'center'
           },
           actions: {
-            gridColumn: '1 / -1',
             display: 'flex',
             gap: '12px',
-            alignItems: 'center'
+            alignItems: 'center',
+            marginTop: '16px'
           },
           submitBtn: {
             padding: '12px 24px',
@@ -557,32 +511,6 @@
             padding: '10px 0',
             textAlign: 'left',
             color: '#d1d5db'
-          },
-          timelineList: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px'
-          },
-          timelineItem: {
-            padding: '12px',
-            backgroundColor: '#1a1a1a',
-            borderRadius: '6px',
-            borderLeft: '3px solid #dc2626'
-          },
-          timelineMeta: {
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: '12px',
-            marginBottom: '8px',
-            color: '#9ca3af'
-          },
-          weekRankings: {
-            fontSize: '13px',
-            lineHeight: '1.6',
-            color: '#d1d5db'
-          },
-          weekRank: {
-            marginBottom: '4px'
           }
         };
 
