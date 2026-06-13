@@ -52,16 +52,14 @@
           };
 
           const removeProspect = (name) => setProspects(prospects.filter(p => p !== name));
-          const addToRanking = (prospect) => {
-            if (!ranking.includes(prospect)) {
-              setRanking([...ranking, prospect]);
-            }
-          };
+          
+          const moveRankUp = (index) => {
             if (index === 0) return;
             const newRanking = [...ranking];
             [newRanking[index], newRanking[index - 1]] = [newRanking[index - 1], newRanking[index]];
             setRanking(newRanking);
           };
+          
           const moveRankDown = (index) => {
             if (index === ranking.length - 1) return;
             const newRanking = [...ranking];
@@ -73,16 +71,19 @@
             setDraggedItem(prospect);
             e.dataTransfer.effectAllowed = 'move';
           };
+          
           const handleDragOver = (e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
           };
+          
           const handleDropOnContainer = (e) => {
             e.preventDefault();
             if (!draggedItem || ranking.includes(draggedItem)) return;
             setRanking([...ranking, draggedItem]);
             setDraggedItem(null);
           };
+          
           const handleDropOnRankCard = (e, targetProspect) => {
             e.preventDefault();
             if (!draggedItem) return;
@@ -125,16 +126,17 @@
           const unrankedProspects = prospects.filter(p => !ranking.includes(p));
           const averageRankings = calculateAverages();
 
-          if (loading) return <div style={{...styles.container, textAlign: 'center', paddingTop: '40px', color: '#fff'}}>Loading...</div>;
+          if (loading) {
+            return <div style={styles.container}><p style={{textAlign: 'center', color: '#fff', marginTop: '40px'}}>Loading...</p></div>;
+          }
 
-          return (
-            <div style={styles.container}>
-              <div style={styles.header}>
-                <div><h1 style={styles.title}>Prospect Rankings</h1><p style={styles.subtitle}>{isAdmin ? 'Admin' : 'Vote'}</p></div>
-                <div style={styles.badge}>{votes.length} votes</div>
-              </div>
-
-              {isAdmin ? (
+          if (isAdmin) {
+            return (
+              <div style={styles.container}>
+                <div style={styles.header}>
+                  <div><h1 style={styles.title}>Prospect Rankings</h1><p style={styles.subtitle}>Admin</p></div>
+                  <div style={styles.badge}>{votes.length} votes</div>
+                </div>
                 <div style={styles.adminContent}>
                   <div style={styles.section}>
                     <h2 style={styles.sectionTitle}>Manage Prospects</h2>
@@ -171,68 +173,77 @@
                     )}
                   </div>
                 </div>
-              ) : (
-                <div style={styles.votingContent}>
-                  <div style={styles.votingSection}>
-                    <h2 style={styles.sectionTitle}>Your Vote</h2>
-                    <div style={styles.rankingList} onDragOver={handleDragOver} onDrop={handleDropOnContainer}>
-                      {ranking.length === 0 ? (
-                        <p style={styles.empty}>Drag prospects here to rank them</p>
-                      ) : (
-                        ranking.map((prospect, index) => (
-                          <div key={prospect} draggable onDragStart={(e) => handleDragStart(e, prospect)} onDragOver={handleDragOver} onDrop={(e) => handleDropOnRankCard(e, prospect)} style={{...styles.rankCard, opacity: draggedItem === prospect ? 0.5 : 1}}>
-                            <div style={styles.rankNumber}>{index + 1}</div>
-                            <div style={styles.rankContent}>
-                              <span style={styles.prospectName}>{prospect}</span>
-                              <span style={styles.points}>{ranking.length - index} pts</span>
-                            </div>
-                            <div style={styles.rankButtons}>
-                              <button onClick={() => moveRankUp(index)} disabled={index === 0} style={{...styles.rankButton, ...(index === 0 ? styles.rankButtonDisabled : {})}}>↑</button>
-                              <button onClick={() => moveRankDown(index)} disabled={index === ranking.length - 1} style={{...styles.rankButton, ...(index === ranking.length - 1 ? styles.rankButtonDisabled : {})}}>↓</button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                    <div style={styles.actions}>
-                      <button onClick={submitVote} disabled={ranking.length === 0} style={{...styles.submitBtn, ...(ranking.length === 0 ? styles.submitBtnDisabled : {})}}>Submit Vote</button>
-                      {submitted && <p style={styles.successMsg}>✓ Vote submitted</p>}
-                    </div>
-                  </div>
+              </div>
+            );
+          }
 
-                  <div style={styles.votingSection}>
-                    <h2 style={styles.sectionTitle}>Available</h2>
-                    <div style={styles.unrankedList}>
-                      {unrankedProspects.length === 0 ? (
-                        <p style={styles.empty}>All prospects ranked</p>
-                      ) : (
-                        unrankedProspects.map(prospect => (
-                          <div key={prospect} draggable onDragStart={(e) => handleDragStart(e, prospect)} onDragOver={handleDragOver} onDrop={(e) => handleDropOnRankCard(e, prospect)} style={{...styles.unrankedCard, opacity: draggedItem === prospect ? 0.5 : 1}}>{prospect}</div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+          return (
+            <div style={styles.container}>
+              <div style={styles.header}>
+                <div><h1 style={styles.title}>Prospect Rankings</h1><p style={styles.subtitle}>Vote</p></div>
+                <div style={styles.badge}>{votes.length} votes</div>
+              </div>
 
-                  <div style={{...styles.votingSection, gridColumn: '1 / -1'}}>
-                    <h2 style={styles.sectionTitle}>Average Rankings ({votes.length} votes)</h2>
-                    {averageRankings.length === 0 ? (
-                      <p style={styles.empty}>Be the first to vote!</p>
+              <div style={styles.votingContent}>
+                <div style={styles.votingSection}>
+                  <h2 style={styles.sectionTitle}>Your Vote</h2>
+                  <div style={styles.rankingList} onDragOver={handleDragOver} onDrop={handleDropOnContainer}>
+                    {ranking.length === 0 ? (
+                      <p style={styles.empty}>Drag prospects here to rank them</p>
                     ) : (
-                      <table style={styles.table}>
-                        <tbody>
-                          {averageRankings.map((r, i) => (
-                            <tr key={i} style={styles.tableRow}>
-                              <td style={styles.tableCell}>{i + 1}</td>
-                              <td style={styles.tableCell}>{r.prospect}</td>
-                              <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>{r.avgPoints.toFixed(1)} pts</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      ranking.map((prospect, index) => (
+                        <div key={prospect} draggable onDragStart={(e) => handleDragStart(e, prospect)} onDragOver={handleDragOver} onDrop={(e) => handleDropOnRankCard(e, prospect)} style={{...styles.rankCard, opacity: draggedItem === prospect ? 0.5 : 1}}>
+                          <div style={styles.rankNumber}>{index + 1}</div>
+                          <div style={styles.rankContent}>
+                            <span style={styles.prospectName}>{prospect}</span>
+                            <span style={styles.points}>{ranking.length - index} pts</span>
+                          </div>
+                          <div style={styles.rankButtons}>
+                            <button onClick={() => moveRankUp(index)} disabled={index === 0} style={{...styles.rankButton, ...(index === 0 ? styles.rankButtonDisabled : {})}}>↑</button>
+                            <button onClick={() => moveRankDown(index)} disabled={index === ranking.length - 1} style={{...styles.rankButton, ...(index === ranking.length - 1 ? styles.rankButtonDisabled : {})}}>↓</button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div style={styles.actions}>
+                    <button onClick={submitVote} disabled={ranking.length === 0} style={{...styles.submitBtn, ...(ranking.length === 0 ? styles.submitBtnDisabled : {})}}>Submit Vote</button>
+                    {submitted && <p style={styles.successMsg}>✓ Vote submitted</p>}
+                  </div>
+                </div>
+
+                <div style={styles.votingSection}>
+                  <h2 style={styles.sectionTitle}>Available</h2>
+                  <div style={styles.unrankedList}>
+                    {unrankedProspects.length === 0 ? (
+                      <p style={styles.empty}>All prospects ranked</p>
+                    ) : (
+                      unrankedProspects.map(prospect => (
+                        <div key={prospect} draggable onDragStart={(e) => handleDragStart(e, prospect)} onDragOver={handleDragOver} onDrop={(e) => handleDropOnRankCard(e, prospect)} style={{...styles.unrankedCard, opacity: draggedItem === prospect ? 0.5 : 1}}>{prospect}</div>
+                      ))
                     )}
                   </div>
                 </div>
-              )}
+
+                <div style={{...styles.votingSection, gridColumn: '1 / -1'}}>
+                  <h2 style={styles.sectionTitle}>Average Rankings ({votes.length} votes)</h2>
+                  {averageRankings.length === 0 ? (
+                    <p style={styles.empty}>Be the first to vote!</p>
+                  ) : (
+                    <table style={styles.table}>
+                      <tbody>
+                        {averageRankings.map((r, i) => (
+                          <tr key={i} style={styles.tableRow}>
+                            <td style={styles.tableCell}>{i + 1}</td>
+                            <td style={styles.tableCell}>{r.prospect}</td>
+                            <td style={{...styles.tableCell, textAlign: 'right', fontWeight: '600'}}>{r.avgPoints.toFixed(1)} pts</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
             </div>
           );
         }
