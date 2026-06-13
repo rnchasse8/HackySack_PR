@@ -95,6 +95,26 @@
             e.dataTransfer.dropEffect = 'move';
           };
 
+          const handleDropOnRankCard = (e, targetProspect) => {
+            e.preventDefault();
+            if (!draggedItem) return;
+
+            // If dragging within ranking list, reorder
+            if (ranking.includes(draggedItem) && ranking.includes(targetProspect)) {
+              if (draggedItem === targetProspect) return;
+              const draggedIndex = ranking.indexOf(draggedItem);
+              const targetIndex = ranking.indexOf(targetProspect);
+              const newRanking = [...ranking];
+              newRanking.splice(draggedIndex, 1);
+              newRanking.splice(targetIndex, 0, draggedItem);
+              setRanking(newRanking);
+            } else if (!ranking.includes(draggedItem)) {
+              // Adding from available
+              setRanking([...ranking, draggedItem]);
+            }
+            setDraggedItem(null);
+          };
+
           const handleDropOnContainer = (e) => {
             e.preventDefault();
             if (!draggedItem) return;
@@ -191,7 +211,7 @@
                             draggable
                             onDragStart={(e) => handleDragStart(e, prospect)}
                             onDragOver={handleDragOver}
-                            onDrop={(e) => handleDrop(e, prospect)}
+                            onDrop={(e) => handleDropOnRankCard(e, prospect)}
                             style={{
                               ...styles.rankCard,
                               opacity: draggedItem === prospect ? 0.5 : 1
