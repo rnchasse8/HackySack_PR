@@ -52,7 +52,11 @@
           };
 
           const removeProspect = (name) => setProspects(prospects.filter(p => p !== name));
-          const moveRankUp = (index) => {
+          const addToRanking = (prospect) => {
+            if (!ranking.includes(prospect)) {
+              setRanking([...ranking, prospect]);
+            }
+          };
             if (index === 0) return;
             const newRanking = [...ranking];
             [newRanking[index], newRanking[index - 1]] = [newRanking[index - 1], newRanking[index]];
@@ -239,8 +243,8 @@
           title: { fontSize: '32px', fontWeight: '700', margin: '0 0 4px 0', color: '#ffffff' },
           subtitle: { fontSize: '14px', color: '#9ca3af', margin: 0 },
           badge: { padding: '6px 12px', backgroundColor: '#dc2626', color: '#fff', borderRadius: '4px', fontSize: '12px', fontWeight: '600' },
-          adminContent: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' },
-          votingContent: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' },
+          adminContent: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' },
+          votingContent: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' },
           section: { backgroundColor: '#111111', borderRadius: '8px', padding: '20px', border: '1px solid #404040' },
           votingSection: { backgroundColor: '#111111', borderRadius: '8px', padding: '20px', border: '1px solid #404040' },
           sectionTitle: { fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0', color: '#ffffff' },
