@@ -18,6 +18,8 @@
         function ProspectRanker() {
           const SHEET_ID = '1GYw-olY5z4xu3JvoMtxPTkzKQuSrxb3chg9eUfeoQao';
           const PROSPECTS_CSV = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
+          const VOTES_CSV = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=1565266401`;
+          const SHEET_URL = 'https://script.google.com/macros/d/AKfycbxdTUrrWY2xKWZKbkkLKSSGYYZpB5YalhMKsyILX22U8JLM1u-jVPQrzPqDZ1P1r5li3A/usercripts';
           const isAdmin = new URLSearchParams(window.location.search).get('admin') === 'true';
           
           const [prospects, setProspects] = React.useState([]);
@@ -29,19 +31,38 @@
           const [loading, setLoading] = React.useState(true);
 
           React.useEffect(() => {
-            fetch(PROSPECTS_CSV).then(r => r.text()).then(csv => {
-              const lines = csv.trim().split('\n');
+            Promise.all([
+              fetch(PROSPECTS_CSV).then(r => r.text()),
+              fetch(VOTES_CSV).then(r => r.text())
+            ]).then(([prospectsCsv, votesCsv]) => {
+              const lines = prospectsCsv.trim().split('\n');
               const prospectsData = lines.slice(1).map(line => line.trim()).filter(line => line.length > 0);
               setProspects(prospectsData);
+              
+              const voteLines = votesCsv.trim().split('\n');
+              if (voteLines.length > 1) {
+                const votesData = [];
+                voteLines.slice(1).forEach(line => {
+                  const parts = line.split(',');
+                  if (parts.length >= 3) {
+                    const date = parts[0].trim();
+                    const prospect = parts[2].trim();
+                    const points = parseInt(parts[4] || 0);
+                    
+                    let found = votesData.find(v => v.timestamp === date);
+                    if (!found) {
+                      found = { ranking: [], timestamp: date };
+                      votesData.push(found);
+                    }
+                    found.ranking.push({ prospect, points });
+                  }
+                });
+                setVotes(votesData);
+              }
             }).catch(err => console.error('Failed:', err)).finally(() => setLoading(false));
-            
-            const saved = localStorage.getItem('prospectVotes');
-            if (saved) setVotes(JSON.parse(saved));
           }, []);
 
-          React.useEffect(() => {
-            localStorage.setItem('prospectVotes', JSON.stringify(votes));
-          }, [votes]);
+          // Votes now synced to Sheet, no local storage needed
 
           const addProspect = (e) => {
             e.preventDefault();
@@ -103,10 +124,20 @@
 
           const submitVote = () => {
             const points = ranking.map((prospect, index) => ({ prospect, points: ranking.length - index }));
-            setVotes([...votes, { ranking: points, timestamp: new Date().toISOString() }]);
-            setRanking([]);
-            setSubmitted(true);
-            setTimeout(() => setSubmitted(false), 2000);
+            const newEntry = { ranking: points, timestamp: new Date().toISOString().split('T')[0] };
+            
+            fetch(SHEET_URL, {
+              method: 'POST',
+              body: JSON.stringify(newEntry)
+            }).then(() => {
+              setVotes([...votes, newEntry]);
+              setRanking([]);
+              setSubmitted(true);
+              setTimeout(() => setSubmitted(false), 2000);
+            }).catch(err => {
+              console.error('Failed to submit:', err);
+              setSubmitted(false);
+            });
           };
 
           const calculateAverages = () => {
